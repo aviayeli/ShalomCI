@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 # הגדרת נתיב השורש לפרויקט
 project_root = str(Path(__file__).parent.parent.parent)
@@ -14,6 +13,8 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from src.core.cross_ref import NETWORK_ERROR_STATUS
+from src.gui.table_controls import SORT_OPTIONS, available_statuses, filter_and_sort
+from src.gui.table_render import render_table
 from src.sdk import ShalomCI_SDK
 
 # אייקוני נגישות (WCAG 2.2) - ההתראה על סטטוס לא מסתמכת על צבע בלבד; אותם ספים כמו צביעת התאים.
@@ -84,31 +85,6 @@ def cached_analysis(file_bytes: bytes, filename: str):  # pragma: no cover - ח�
             os.remove(tmp_path)
 
 
-TABLE_CSS = """
-body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-.risk-table { width: 100%; border-collapse: collapse; }
-.risk-table thead th { position: sticky !important; top: 0 !important; background-color: #0056B3 !important;
-    color: white !important; z-index: 1000 !important; padding: 10px; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.4); }
-.risk-table th, .risk-table td { border: 1px solid #ddd; padding: 8px; text-align: right; }
-"""
-
-
-def render_table(df: pd.DataFrame):  # pragma: no cover - חיווט Streamlit בלבד (Proxy)
-    # iframe מבודד (components.html) עוקף את סינון aria-/role של DOMPurify ב-st.markdown ואת
-    # התנגשות ה-CSS הגלובלי עם sticky header. format(escape="html") חובה: components.html מריץ
-    # HTML/JS גולמי בלי sanitization, והערכים מגיעים מ-Mouser API/BOM שהועלה - מקורות לא מהימנים.
-    html_table = df.style.hide(axis="index").format(escape="html").map(
-        lambda val: 'background-color: #FFCCCC' if val == 1 else (
-            'background-color: #FFFFCC' if val in [2, 3] else 'background-color: #CCFFCC'),
-        subset=['ציון סיכון']
-    ).to_html(table_attributes='class="risk-table" role="table"').replace("<th ", '<th scope="col" ')
-
-    full_html = (f'<!DOCTYPE html><html dir="rtl" lang="he"><head><style>{TABLE_CSS}</style></head>'
-                 f'<body><div role="region" aria-label="טבלת נתוני רכיבים מועשרים" tabindex="0">'
-                 f'{html_table}</div></body></html>')
-    components.html(full_html, height=600, scrolling=True)
-
-
 def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלוגיקה הטהורה נבדקת ב-status_icon/build_rows/run_analysis
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
@@ -137,6 +113,15 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
         )
 
     df = pd.DataFrame(build_rows(data))
+
+    st.subheader("🔍 סינון ומיון")
+    col_search, col_status, col_sort, col_order = st.columns([2, 2, 2, 1])
+    search = col_search.text_input("חיפוש (מק\"ט / יצרן)")
+    statuses = col_status.multiselect("סטטוס מחזור חיים", options=available_statuses(df))
+    sort_by = col_sort.selectbox("מיין לפי", options=SORT_OPTIONS)
+    ascending = col_order.radio("סדר", options=["עולה", "יורד"]) == "עולה"
+    df = filter_and_sort(df, search, statuses, sort_by, ascending)
+
     # utf-8-sig מוסיף BOM כך ש-Excel יזהה נכון קידוד עברי בפתיחת קובץ ה-CSV
     col_download.download_button(
         "הורד דוח", data=df.to_csv(index=False).encode("utf-8-sig"),
