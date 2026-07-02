@@ -2,9 +2,6 @@ import re
 
 import pandas as pd
 
-# עמודות שניתן למיין לפיהן בסרגל הכלים; המפתח = שם העמודה כפי שמופיע ב-DataFrame
-SORT_OPTIONS = ["מק\"ט", "ציון סיכון", "מחיר ליחידה", "זמן אספקה"]
-
 # עמודות מפורמטות כטקסט (למשל "₪1.85" או "זמן אספקה: 63 ימים") שדורשות שליפת מספר למיון נכון
 _NUMERIC_TEXT_COLUMNS = {"מחיר ליחידה", "זמן אספקה"}
 _NUMBER_RE = re.compile(r"[\d.,]+")
@@ -20,6 +17,11 @@ def _extract_number(value) -> float:
         return float(match.group().replace(",", ""))
     except ValueError:
         return float("nan")
+
+
+def sort_options(df: pd.DataFrame) -> list:
+    """מחזיר את כל עמודות ה-DataFrame הנוכחי כאפשרויות מיון, כך שעמודה חדשה תופיע בסרגל הכלים אוטומטית."""
+    return list(df.columns)
 
 
 def available_statuses(df: pd.DataFrame) -> list:

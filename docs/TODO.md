@@ -47,6 +47,22 @@
 - [x] **תמיכה בתוכן מעורב (Bidi):** `unicode-bidi: isolate` על תאי הטבלה כך שמק"טים באנגלית בתוך טבלה עברית לא משבשים כיוון טקסט או מיקום מקפים.
 - [x] **חיבור ה-Gatekeeper בפועל:** `ShalomCI_SDK` מקימה `ApiGatekeeper` ו-`MouserClient` אוטומטית מתוך `MOUSER_API_KEY` ב-`.env` (באמצעות `python-dotenv`), כך שהעשרת הנתונים בטבלה מבוססת על מידע אמיתי ולא רק על ערכי N/A.
 - [x] **ניקוי חיבורי רשת:** `SDK.close()` סוגר את ה-`httpx.AsyncClient` הפנימי של ה-Gatekeeper בסיום כל הרצה (CLI ו-GUI כאחד).
-- [ ] **אייקוני נגישות (WCAG 2.2):** הוספת אייקונים מפורשים (לצד טקסט) לסטטוסים מסוכנים (EOL/NRND) בטבלת ה-GUI, כך שההתראה לא תסתמך על צבע בלבד — עדיין לא מומש בקוד, רק תועד כדרישה ב-PRD.
-- [ ] **קליינטים ל-Octopart/DigiKey:** `src/services/octopart_api.py` ו-`digikey_api.py` עדיין stubs ריקים; `cross_ref.find_alternatives` מוגן כרגע להחזיר רשימה ריקה כשמחובר קליינט שלא תומך בקרוס-רפרנס (כמו Mouser).
-- [ ] **כיסוי בדיקות מלא ל-100%:** הכיסוי הכולל עומד על כ-87% (מעל סף 85% הנדרש), אך `sdk.py` ו-`cross_ref.py` עדיין לא מכוסים במלואם.
+- [x] **אייקוני נגישות (WCAG 2.2):** הוספת אייקונים מפורשים (⛔/⚠️/✅/❓) לצד הטקסט לכל סטטוס בטבלת ה-GUI (`status_icon` ב-`app.py`), כך שההתראה לא מסתמכת על צבע בלבד.
+- [x] **סרגל סינון ומיון:** `src/gui/table_controls.py` (חיפוש חופשי, סינון סטטוסים מרובה-בחירה, מיון עם חילוץ מספר מ-Regex לעמודות טקסט מפורמטות) ו-`tests/unit/test_table_controls.py`.
+- [x] **מיון דינמי לכל העמודות:** `sort_options(df)` גוזר את אפשרויות המיון מרשימת עמודות ה-DataFrame בפועל, במקום רשימה קבועה בקוד - כל עמודה עתידית מופיעה אוטומטית בתפריט.
+- [x] **טבלה ב-iframe מבודד:** `src/gui/table_render.py` מרנדר את הטבלה בתוך `components.html` כדי לתקן sticky header ואת סינון ה-aria attributes של DOMPurify (עם `format(escape="html")` למניעת XSS ממקורות לא מהימנים).
+- [x] **שכבת תרגום עברית מרכזית:** `src/shared/translations.py`, מלאי ספקים (Vendor Inventory) ושדות Mouser מורחבים (זמן אספקה, מחיר, RoHS, אריזה, חלופה מוצעת) בטבלת ה-GUI.
+- [x] **הסרת "ציון בריאות" (Health Score) מה-GUI:** הוסר ה-`st.metric` המצטבר מהמסך בשלב הליטוש הסופי (V3) - ראו PRD סעיף 4.3 ו-PLAN סעיף 6. הציון המצטבר (`calculate_project_score`) ממשיך להיות מחושב ומוחזר על ידי ה-SDK ומוצג בממשק ה-CLI בלבד.
+
+## Phase 8: אריזת Desktop (PyInstaller)
+- [x] **נקודת כניסה ל-Desktop:** `run_desktop.py` - `multiprocessing.freeze_support()`, איתור פורט פנוי דינמי, פתיחת דפדפן אוטומטית ב-thread, והרצת `streamlit.web.cli.main()` פרוגרמטית. פותר נתיבים גם תחת PyInstaller (`sys._MEIPASS`).
+- [x] **סקריפט בנייה:** `build.py` (מופעל דרך `uv run python build.py`) - `--onedir --windowed --collect-all streamlit --copy-metadata streamlit --copy-metadata altair --add-data "src;src"`.
+- [x] **`pyinstaller` כתלות פיתוח:** נוסף ל-`dependency-groups.dev` ב-`pyproject.toml`/`uv.lock` באמצעות `uv add --dev pyinstaller` בלבד (ללא `pip`).
+
+## פריטים שנדחו במכוון מעבר ל-MVP (Out of Scope, לא חוסמים סגירת שלב הפיתוח)
+- **קליינטים ל-Octopart/DigiKey:** `src/services/octopart_api.py` ו-`digikey_api.py` נותרים stubs ריקים במכוון (תועד כבר ב-PLAN סעיף 3 כמגבלת שלב נוכחי); `cross_ref.find_alternatives` מוגן להחזיר רשימה ריקה בבטחה כשמחובר קליינט שאינו תומך בקרוס-רפרנס (כמו Mouser). שלב עתידי, לא חלק מה-MVP הנוכחי.
+- **כיסוי בדיקות מעבר ל-85%:** הכיסוי הכולל עומד על כ-92% (מעל סף ה-85% הנדרש), עם 59 בדיקות עוברות. `cross_ref.py`/`sdk.py`/`gatekeeper.py` אינם מכוסים ב-100% (מסלולי שגיאת רשת קיצוניים) - שיפור אפשרי לשלב תחזוקה עתידי, לא חוסם.
+
+---
+## סטטוס פרויקט: שלב הפיתוח הושלם (Development Phase Complete)
+כל שלבי הפיתוח שהוגדרו במסמך זה (Phase 1 עד Phase 8) הושלמו ואומתו בבדיקות, כולל שלב הליטוש הסופי (הסרת "ציון בריאות", מיון דינמי, ואריזת Desktop). המשך עבודה על הפריטים שנדחו במכוון (Octopart/DigiKey, כיסוי 100%) ינוהל כיוזמות נפרדות מחוץ ל-MVP הנוכחי, בכפוף לאותה מתודולוגיית עבודה (PRD → PLAN → TODO → קוד) המתוארת ב-`docs/CLAUDE.md`.

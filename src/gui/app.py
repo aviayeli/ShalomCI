@@ -13,7 +13,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from src.core.cross_ref import NETWORK_ERROR_STATUS
-from src.gui.table_controls import SORT_OPTIONS, available_statuses, filter_and_sort
+from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_render import render_table
 from src.sdk import ShalomCI_SDK
 
@@ -103,7 +103,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
 
     if "result" not in st.session_state:
         return
-    score, data = st.session_state["result"]
+    _, data = st.session_state["result"]
 
     # אם ה-Gatekeeper מיצה את כל ה-Retry-ים מול Mouser, נחשוף זאת במפורש ולא נציג בשקט N/A/❓
     if any(c.get("manufacturer") == NETWORK_ERROR_STATUS for c in data):
@@ -118,7 +118,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     col_search, col_status, col_sort, col_order = st.columns([2, 2, 2, 1])
     search = col_search.text_input("חיפוש (מק\"ט / יצרן)")
     statuses = col_status.multiselect("סטטוס מחזור חיים", options=available_statuses(df))
-    sort_by = col_sort.selectbox("מיין לפי", options=SORT_OPTIONS)
+    sort_by = col_sort.selectbox("מיין לפי", options=sort_options(df))
     ascending = col_order.radio("סדר", options=["עולה", "יורד"]) == "עולה"
     df = filter_and_sort(df, search, statuses, sort_by, ascending)
 
@@ -127,7 +127,6 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
         "הורד דוח", data=df.to_csv(index=False).encode("utf-8-sig"),
         file_name="shalomci_report.csv", mime="text/csv"
     )
-    st.metric("ציון בריאות", f"{score} / 5.0")
     render_table(df)
 
 

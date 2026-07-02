@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.gui.table_controls import available_statuses, filter_and_sort
+from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 
 
 @pytest.fixture
@@ -14,6 +14,17 @@ def sample_df():
         {"מק\"ט": "PART_NRND", "יצרן": "TI", "סטטוס": "⚠️ NRND", "ציון סיכון": 3,
          "מחיר ליחידה": "לא זמין", "זמן אספקה": "זמן אספקה: לא ידוע"},
     ])
+
+
+def test_sort_options_returns_all_dataframe_columns_dynamically(sample_df):
+    """אפשרויות המיון חייבות להיגזר מכל עמודות ה-DataFrame בפועל, כדי שעמודה חדשה תופיע אוטומטית."""
+    assert sort_options(sample_df) == list(sample_df.columns)
+
+
+def test_sort_options_reflects_added_column(sample_df):
+    """הוספת עמודה חדשה ל-DataFrame (למשל בעתיד) אמורה להופיע מיידית באפשרויות המיון, ללא רשימה קבועה."""
+    extended_df = sample_df.assign(**{"עמודה חדשה": ["א", "ב", "ג"]})
+    assert "עמודה חדשה" in sort_options(extended_df)
 
 
 def test_available_statuses_strips_accessibility_icon(sample_df):

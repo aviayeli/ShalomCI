@@ -8,7 +8,8 @@ ShalomCI/
 ├── docs/
 │   ├── PRD.md                 # דרישות המוצר (אושר)
 │   ├── PLAN.md                # ארכיטקטורה (מסמך זה)
-│   └── TODO.md                # משימות לביצוע (בשלב הבא)
+│   ├── TODO.md                # משימות לביצוע ומעקב סטטוס
+│   └── CLAUDE.md              # חוקת הפרויקט V3
 ├── src/
 │   ├── sdk.py                 # Single Entry Point - שכבת ה-SDK המרכזית
 │   ├── core/
@@ -23,19 +24,24 @@ ShalomCI/
 │   │   └── digikey_api.py     # אינטגרציה מול DigiKey (OAuth2) - stub, שלב עתידי
 │   ├── data/
 │   │   └── case_manager.py    # ניהול מקרים מקומי (Cases) עבור רכיבים ללא חלופה
+│   ├── shared/
+│   │   └── translations.py    # שכבת תרגום עברית מרכזית (סטטוסים, שמות עמודות)
 │   ├── cli/
 │   │   └── main.py            # ממשק שורת הפקודה (Proxy בלבד, ללא לוגיקה)
 │   └── gui/
-│       └── app.py             # ממשק Streamlit בעברית/RTL (Proxy בלבד, ללא לוגיקה)
+│       ├── app.py             # ממשק Streamlit בעברית/RTL (Proxy בלבד, ללא לוגיקה)
+│       ├── table_controls.py  # לוגיקת סינון/מיון טהורה (ניתנת לבדיקה, ללא Streamlit)
+│       └── table_render.py    # רינדור הטבלה ב-iframe מבודד (components.html)
 ├── tests/
-│   ├── test_sdk.py            # בדיקות לשכבת ה-SDK
-│   ├── test_gatekeeper.py     # בדיקות עומס והגבלות קצב לשומר הסף
-│   └── ...                    # בדיקות מודולריות נוספות לכיסוי של 85%
+│   ├── unit/                  # בדיקות יחידה לכל מודול (test_sdk.py, test_gatekeeper.py, ...)
+│   └── integration/           # בדיקות אינטגרציה בין שכבות
+├── run_desktop.py             # נקודת כניסה לאריזת Desktop (PyInstaller) - ראו סעיף 7
+├── build.py                   # סקריפט בנייה ל-PyInstaller (מופעל דרך uv run)
 ├── pyproject.toml             # הגדרות תלויות מנוהלות ע"י uv
 ├── uv.lock                    # נעילת גרסאות מדויקת
 ├── .env-example               # תבנית בטוחה למפתחות API
 ├── .gitignore                 # החרגת .env וקבצים זמניים
-└── CLAUDE.md                  # חוקת הפרויקט V3
+└── README.md                  # מדריך התקנה ושימוש למשתמש הקצה
 ```
 
 ## 2. ארכיטקטורת שכבת ה-SDK (Single Entry Point)
@@ -77,8 +83,19 @@ ShalomCI/
 - `python-dotenv`: לטעינת מפתחות API וסודות מקובץ `.env` מקומי לתוך משתני הסביבה של התהליך, כך שה-SDK יכול לבנות קליינטים אמיתיים (כמו `MouserClient`) בזמן ריצה מבלי לחשוף מפתחות בקוד.
 
 ## 6. ארכיטקטורת ה-GUI (Streamlit, RTL & Accessibility)
-שכבת ה-GUI (`src/gui/app.py`) היא Proxy בלבד: מעלה קובץ, קוראת ל-`ShalomCI_SDK`, ומרנדרת את התוצאה. שום חישוב סיכון, ניקוד או קריאת API לא מתבצעים בקובץ זה.
+שכבת ה-GUI (`src/gui/app.py`) היא Proxy בלבד: מעלה קובץ, קוראת ל-`ShalomCI_SDK`, ומרנדרת את התוצאה. שום חישוב סיכון, ניקוד או קריאת API לא מתבצעים בקובץ זה. לוגיקת הסינון/מיון הטהורה (הניתנת לבדיקה ללא Streamlit) חיה ב-`src/gui/table_controls.py`, ורינדור הטבלה עצמה חי ב-`src/gui/table_render.py`.
+- **טבלה ב-iframe מבודד (`components.html`):** `table_render.py` מרנדר את הטבלה בתוך `iframe` מבודד במקום `st.markdown`, כדי לעקוף שני מכשולים: (1) סינון aria-/role attributes על ידי DOMPurify של Streamlit, החוסם תגיות נגישות; (2) התנגשות ה-CSS הגלובלי של האפליקציה עם ה-`position: sticky` של כותרת הטבלה. מאחר ש-`components.html` מריץ HTML/JS גולמי ללא sanitization, וערכי התאים מגיעים ממקורות לא מהימנים (BOM שהועלה, Mouser API), חובה להשתמש ב-`df.style.format(escape="html")` לפני ההמרה ל-HTML כדי למנוע החדרת קוד (XSS).
+- **סרגל סינון ומיון (`table_controls.py`):** מיישם חיפוש חופשי, סינון סטטוסים מרובה-בחירה, ומיון. אפשרויות המיון (`sort_options`) נגזרות דינמית מרשימת עמודות ה-DataFrame הנוכחי בפועל (`list(df.columns)`) ולא מרשימה קבועה בקוד, כך שכל עמודה עתידית תופיע אוטומטית בתפריט. עמודות טקסט מפורמטות (`_NUMERIC_TEXT_COLUMNS`, למשל "מחיר ליחידה" או "זמן אספקה") ממוינות על בסיס הערך המספרי שמחולץ מהן ב-Regex ולא לקסיקוגרפית; שאר העמודות נופלות חזרה למיון הרגיל של Pandas.
 - **RTL בשתי רמות:** כיוון ה-RTL מוגדר גם גלובלית (`* { direction: rtl !important; }`) וגם במפורש ברמת הבלוק על `.risk-table`, כדי להבטיח שסדר העמודות בטבלה (שנקבע לפי `direction` של האלמנט עצמו, לא רק של אב קדמון) יהיה נכון בכל דפדפן.
 - **תוכן מעורב (Bidi):** לתאי הטבלה (`.risk-table td`) מוגדר `unicode-bidi: isolate`, כך שמק"טים באנגלית בתוך שורה עברית מוצגים משמאל-לימין באופן מבודד, מבלי לשבש את זרימת הטקסט העברי הסובב או מיקום מקפים/סימני פיסוק.
 - **קידוד צבעים לפי חוק 60-30-10:** רקע ניטרלי (60%), כחול המותג `#0056B3` לכותרות טבלה וניווט (30%, מסמל אמינות), וצבעי אדום/צהוב/ירוק להדגשת סיכון בלבד (10%).
-- **נגישות (WCAG 2.2):** בהתאם לדרישת ה-PRD, יש להוסיף בהמשך אייקונים מפורשים (⛔/⚠️/✅) לצד הטקסט בעמודת הסטטוס כך שסטטוס EOL/NRND לא מסתמך על צבע בלבד - פריט פתוח, ראו `docs/TODO.md` Phase 7.
+- **נגישות (WCAG 2.2):** ממומש - עמודת הסטטוס תמיד כוללת גם אייקון מפורש (⛔/⚠️/✅/❓) וגם טקסט (`status_icon` ב-`app.py`), כך שהתראת EOL/NRND אינה מסתמכת על צבע בלבד.
+- **שכבת תרגום (`src/shared/translations.py`):** ריכוז כל מיפויי הטקסט העברי (סטטוסי מחזור חיים, שמות עמודות) במודול אחד, כדי למנוע כפילות מחרוזות בין ה-GUI, ה-CLI ומנוע הדוחות.
+- **ציון בריאות מצטבר (Health Score):** הוסר במכוון ממסך ה-GUI בשלב הליטוש הסופי (V3) - ראו PRD סעיף 4.3. הציון המצטבר (`calculate_project_score`) עדיין מחושב ומוחזר על ידי ה-SDK ומוצג בממשק ה-CLI בלבד; אין להחזירו כרכיב UI עצמאי ב-GUI.
+
+## 7. אריזת שולחן עבודה (Desktop Packaging - PyInstaller)
+כדי לאפשר הפצה למשתמש קצה שאינו טכני כקובץ הפעלה יחיד ל-Windows, מבלי לגעת בקבצי האפליקציה הקיימים:
+- **`run_desktop.py`:** נקודת כניסה נפרדת בשורש הפרויקט. קוראת ל-`multiprocessing.freeze_support()` כשורה ראשונה תחת `if __name__ == "__main__"` (מונע לולאת שכפול תהליכים אינסופית תחת PyInstaller), מאתרת פורט פנוי דינמית באמצעות `socket`, פותחת את הדפדפן אוטומטית ב-thread ברקע, ומפעילה את `streamlit.web.cli.main()` באופן פרוגרמטי מול `src/gui/app.py`.
+- **פתרון תלות בזמן ריצה (Frozen Path Resolution):** מאחר ש-Streamlit קורא את קובץ ה-`app.py` מהדיסק (`exec`) ולא מייבא אותו כמודול, `run_desktop.py` מזהה סביבת PyInstaller (`sys.frozen`) ומחשב את נתיב הבסיס דרך `sys._MEIPASS` (תיקיית `_internal` במצב `--onedir`) במקום `__file__`.
+- **`build.py`:** סקריפט הבנייה, מופעל אך ורק דרך `uv run python build.py` (חובה להריץ על Windows בפועל - PyInstaller אינו תומך ב-Cross-Compilation). מריץ `uv run pyinstaller` עם הדגלים: `--onedir` (טעינה מהירה), `--windowed` (ללא חלון קונסולה), `--collect-all streamlit` ו-`--copy-metadata streamlit/altair` (חובה - שתי הספריות קוראות ל-`importlib.metadata.version()` בזמן ייבוא וקורסות ללא כך תחת PyInstaller), ו-`--add-data "src;src"` (מבטיח ש-`src/gui/app.py` וכל חבילות ה-`src` קיימות כקבצים ממשיים בתיקיית ההרצה, כנדרש להרצת Streamlit).
+- **`pyinstaller`** מוגדר כתלות פיתוח (`dependency-groups.dev`) ב-`pyproject.toml`/`uv.lock`, בהתאם לחוק הברזל של ניהול סביבה באמצעות `uv` בלבד.
