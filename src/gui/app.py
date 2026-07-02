@@ -20,6 +20,12 @@ from src.sdk import ShalomCI_SDK
 # אייקוני נגישות (WCAG 2.2) - ההתראה על סטטוס לא מסתמכת על צבע בלבד; אותם ספים כמו צביעת התאים.
 STATUS_ICONS = {1: "⛔", 2: "⚠️", 3: "⚠️", 4: "✅", 5: "✅"}
 
+RISK_SCORE_HELP = (
+    "This score represents the overall supply chain and obsolescence risk of the BOM. "
+    "It is calculated by factoring in the Lifecycle Status (e.g., EOL, NRND), current "
+    "stock availability, and lead times across all components."
+)
+
 
 def status_icon(risk_score: int) -> str:
     """מחזיר אייקון נגישות התואם לרמת הסיכון; ציון לא ידוע (0) מסומן לבדיקה ידנית."""
@@ -103,7 +109,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
 
     if "result" not in st.session_state:
         return
-    _, data = st.session_state["result"]
+    score, data = st.session_state["result"]
 
     # אם ה-Gatekeeper מיצה את כל ה-Retry-ים מול Mouser, נחשוף זאת במפורש ולא נציג בשקט N/A/❓
     if any(c.get("manufacturer") == NETWORK_ERROR_STATUS for c in data):
@@ -127,6 +133,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
         "הורד דוח", data=df.to_csv(index=False).encode("utf-8-sig"),
         file_name="shalomci_report.csv", mime="text/csv"
     )
+    st.metric("ציון סיכון כללי (Risk Score)", f"{score} / 5.0", help=RISK_SCORE_HELP)
     render_table(df)
 
 
