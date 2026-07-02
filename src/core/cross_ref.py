@@ -1,0 +1,68 @@
+from typing import Any, Dict, List
+
+
+class CrossReferenceEngine:
+    """
+    מנוע לאיתור חלופות (FFF - Form, Fit, Function) ונתוני רכיבים.
+    פועל באמצעות קליינט חיצוני (כגון Octopart/Nexar) המנותב דרך Gatekeeper.
+    """
+
+    def __init__(self, api_client=None):
+        self.api_client = api_client
+
+    async def get_part_data(self, mpn: str) -> Dict[str, Any]:
+        """
+        שליפת נתונים בסיסיים על רכיב (יצרן, סטטוס חיים, ציון סיכון).
+        מבנה התגובה תואם ל-REST API של Mouser (SearchResults.Parts).
+        """
+        if not self.api_client:
+            return {"manufacturer": "N/A", "lifecycle": "N/A", "risk_score": 5}
+
+        try:
+            # פנייה ל-API לקבלת פרטי הרכיב
+            result = await self.api_client.search_part(mpn)
+
+            # חילוץ הנתונים ממבנה תגובת Mouser
+            # שימו לב: Mouser מחזירה את המפתח "SearchResults" עם ערך None (לא חסר!) במקרה
+            # של שגיאה (למשל מפתח API לא תקין) - לכן לא ניתן לסמוך על ברירת המחדל של .get() בלבד.
+            parts = (result.get("SearchResults") or {}).get("Parts") or []
+            if not parts:
+                return {"manufacturer": "Unknown", "lifecycle": "Unknown", "risk_score": 5}
+
+            part = parts[0]
+
+            # מיפוי השדות
+            lifecycle = part.get("LifecycleStatus") or "Unknown"
+            # לוגיקת ציון סיכון: 1 ל-EOL, 3 ל-NRND, 5 לתקין
+            risk_map = {"EOL": 1, "NRND": 3, "Active": 5, "New Product": 5}
+
+            return {
+                "manufacturer": part.get("Manufacturer", "Unknown"),
+                "lifecycle": lifecycle,
+                "risk_score": risk_map.get(lifecycle, 3)
+            }
+        except Exception as e:
+            print(f"DEBUG: שגיאה בשליפת נתוני רכיב {mpn}: {e}")
+            return {"manufacturer": "Error", "lifecycle": "Error", "risk_score": 5}
+
+    async def find_alternatives(self, mpn: str) -> List[Dict[str, Any]]:
+        """
+        מחפש חלופות (FFF) לרכיב מסוים.
+        זמין אך ורק דרך ספקים התומכים בקרוס-רפרנס (למשל Octopart); Mouser אינו תומך בכך כיום.
+        """
+        if not self.api_client or not hasattr(self.api_client, "search_cross_reference"):
+            return []
+
+        try:
+            result = await self.api_client.search_cross_reference(mpn)
+
+            # חילוץ בטוח מתוך מבנה GraphQL
+            parts = result.get("data", {}).get("supSearch", {}).get("results", [])
+            if not parts:
+                return []
+
+            similar_parts = parts[0].get("part", {}).get("similarParts", [])
+            return similar_parts
+        except Exception as e:
+            print(f"DEBUG: שגיאה באיתור חלופות עבור {mpn}: {e}")
+            return []

@@ -1,0 +1,29 @@
+# Environments & Secrets (CRITICAL)
+.env
+.venv
+env/
+venv/
+
+# Database files
+cases.db
+*.sqlite3
+
+# Generated report outputs (produced by running the CLI/GUI locally)
+[Rr]eport_*.xlsx
+
+# Python build & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# IDEs
+.idea/
+.vscode/
+
+# uv / package manager
+.uv_cache

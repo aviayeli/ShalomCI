@@ -1,0 +1,8 @@
+# קונפיגורציית שרת עבור פריסה על שרת Ubuntu ללא ראש (headless) מאחורי Reverse Proxy (כגון NGINX).
+# headless=true מונע מ-Streamlit לנסות לפתוח דפדפן מקומי בעת ההפעלה.
+# enableCORS/enableXsrfProtection מכובים כדי למנוע חסימת בקשות WebSocket וכשלי "Please wait..."
+# כשה-Proxy מגיש את האפליקציה תחת דומיין/נתיב שונה מזה שה-WebSocket Handshake מצפה לו.
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = false
