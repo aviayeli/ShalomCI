@@ -2,6 +2,8 @@ from typing import Any, Dict, List
 
 import httpx
 
+from src.services.mouser_api import MouserClient
+
 # מסמן סטטוס ייעודי לשגיאת רשת אמיתית (ה-Gatekeeper מיצה את כל ניסיונות ה-Retry),
 # בניגוד ל"Unknown"/"Error" עסקיים רגילים - כדי שממשק המשתמש (GUI) יוכל להבחין בין
 # "לא מצאנו את הרכיב" לבין "לא הצלחנו בכלל להגיע ל-Mouser" ולהציג התראה מפורשת על כך.
@@ -43,11 +45,16 @@ class CrossReferenceEngine:
             # לוגיקת ציון סיכון: 1 ל-EOL, 3 ל-NRND, 5 לתקין
             risk_map = {"EOL": 1, "NRND": 3, "Active": 5, "New Product": 5}
 
-            return {
+            result = {
                 "manufacturer": part.get("Manufacturer", "Unknown"),
                 "lifecycle": lifecycle,
                 "risk_score": risk_map.get(lifecycle, 3)
             }
+            # שדות מורחבים (מלאי, זמן אספקה, מחיר וכו') זמינים כרגע רק עבור Mouser -
+            # בדיקת isinstance מפורשת (ולא duck-typing) כדי לא "לתפוס" מוקים גנריים בבדיקות.
+            if isinstance(self.api_client, MouserClient):
+                result.update(MouserClient.parse_extra_fields(part))
+            return result
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             # ה-Gatekeeper כבר מיצה את כל ניסיונות ה-Retry - זו שגיאת רשת אמיתית ולא רכיב לא ידוע.
             print(f"DEBUG: שגיאת רשת בשליפת נתוני רכיב {mpn}: {e}")

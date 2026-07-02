@@ -45,6 +45,30 @@ def test_build_rows_defaults_for_missing_fields():
     assert rows[0]["יצרן"] == "N/A"
     assert rows[0]["סטטוס"] == "❓ N/A"
     assert rows[0]["ציון סיכון"] == 0
+    assert rows[0]["מלאי"] == "לא ידוע"
+    assert rows[0]["חלופה מוצעת (Mouser)"] == "אין"
+
+
+def test_build_rows_includes_extended_mouser_fields():
+    """מוודא שהעמודות המורחבות (מלאי, זמן אספקה, מחיר, חלופה, RoHS, אריזה) מוצגות כראוי."""
+    components = [{
+        "mpn": "NE555", "manufacturer": "TI", "lifecycle_status": "פעיל", "risk_score": 5,
+        "inventory": "Mouser: 24,755 במלאי",
+        "lead_time": "זמן אספקה: 63 ימים",
+        "price_per_unit": "₪1.85",
+        "suggested_replacement": "NE555DR-ALT",
+        "rohs_status": "תואם RoHS",
+        "packaging": "Cut Tape",
+    }]
+
+    rows = build_rows(components)
+
+    assert rows[0]["מלאי"] == "Mouser: 24,755 במלאי"
+    assert rows[0]["זמן אספקה"] == "זמן אספקה: 63 ימים"
+    assert rows[0]["מחיר ליחידה"] == "₪1.85"
+    assert rows[0]["חלופה מוצעת (Mouser)"] == "NE555DR-ALT"
+    assert rows[0]["תאימות RoHS"] == "תואם RoHS"
+    assert rows[0]["צורת אריזה"] == "Cut Tape"
 
 
 @pytest.mark.asyncio

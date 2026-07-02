@@ -54,6 +54,12 @@ def build_rows(components: list) -> list:
             "יצרן": c.get("manufacturer", "N/A"),
             "סטטוס": f"{status_icon(score)} {c.get('lifecycle_status', 'N/A')}",
             "ציון סיכון": score,
+            "מלאי": c.get("inventory", "לא ידוע"),
+            "זמן אספקה": c.get("lead_time", "זמן אספקה: לא ידוע"),
+            "מחיר ליחידה": c.get("price_per_unit", "לא זמין"),
+            "חלופה מוצעת (Mouser)": c.get("suggested_replacement", "אין"),
+            "תאימות RoHS": c.get("rohs_status", "לא ידוע"),
+            "צורת אריזה": c.get("packaging", "לא ידוע"),
             "חלופות": ", ".join([a.get("mpn", "") for a in c.get("alternatives", [])]) if c.get(
                 "alternatives") else "אין"
         })

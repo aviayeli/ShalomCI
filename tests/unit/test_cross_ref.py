@@ -4,6 +4,8 @@ import httpx
 import pytest
 
 from src.core.cross_ref import NETWORK_ERROR_STATUS, CrossReferenceEngine
+from src.services.gatekeeper import ApiGatekeeper
+from src.services.mouser_api import MouserClient
 
 
 @pytest.mark.asyncio
@@ -89,6 +91,30 @@ async def test_get_part_data_mouser_error_response_search_results_is_none():
     data = await engine.get_part_data("NE555")
 
     assert data == {"manufacturer": "Unknown", "lifecycle": "Unknown", "risk_score": 5}
+
+
+@pytest.mark.asyncio
+async def test_get_part_data_merges_mouser_extra_fields():
+    """מוודא שכאשר הקליינט הוא MouserClient אמיתי, השדות המורחבים (מלאי, זמן אספקה וכו')
+    ממוזגים לתוך תוצאת get_part_data - ולא רק manufacturer/lifecycle/risk_score."""
+    client = MouserClient(api_key="fake_key", gatekeeper=ApiGatekeeper())
+    client.search_part = AsyncMock(return_value={
+        "SearchResults": {
+            "Parts": [{
+                "Manufacturer": "Texas Instruments",
+                "LifecycleStatus": "Active",
+                "Availability": "5,000 In Stock",
+                "LeadTime": "10 Days",
+            }]
+        }
+    })
+
+    engine = CrossReferenceEngine(api_client=client)
+    data = await engine.get_part_data("NE555")
+
+    assert data["inventory"] == "Mouser: 5,000 במלאי"
+    assert data["lead_time"] == "זמן אספקה: 10 ימים"
+    await client.gatekeeper.close()
 
 
 @pytest.mark.asyncio

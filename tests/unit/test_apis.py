@@ -81,3 +81,40 @@ def test_mouser_client_missing_key(gatekeeper):
     """מוודא חסימה בהקמת קליינט ללא מפתח API."""
     with pytest.raises(ValueError, match="Mouser API key is required"):
         MouserClient(api_key="", gatekeeper=gatekeeper)
+
+
+def test_parse_extra_fields_extracts_and_translates_full_part():
+    """בדיקה שהחילוץ מתוך מבנה חלק מלא של Mouser מתרגם ומעצב את כל השדות הנדרשים."""
+    part = {
+        "Availability": "24,755 In Stock",
+        "LeadTime": "63 Days",
+        "PriceBreaks": [
+            {"Quantity": 10, "Price": "₪1.50"},
+            {"Quantity": 1, "Price": "₪1.85"},
+        ],
+        "SuggestedReplacement": "NE555DR-ALT",
+        "ROHSStatus": "RoHS Compliant",
+        "ProductAttributes": [
+            {"AttributeName": "Package", "AttributeValue": "SOIC-8"},
+            {"AttributeName": "Packaging", "AttributeValue": "Cut Tape"},
+        ],
+    }
+
+    extra = MouserClient.parse_extra_fields(part)
+
+    assert extra["inventory"] == "Mouser: 24,755 במלאי"
+    assert extra["lead_time"] == "זמן אספקה: 63 ימים"
+    assert extra["price_per_unit"] == "₪1.85"
+    assert extra["suggested_replacement"] == "NE555DR-ALT"
+    assert extra["rohs_status"] == "תואם RoHS"
+    assert extra["packaging"] == "Cut Tape"
+
+
+def test_parse_extra_fields_defaults_for_missing_data():
+    """מוודא שערכים חסרים (למשל אין PriceBreaks/חלופה מוצעת) מקבלים ברירות מחדל בעברית."""
+    extra = MouserClient.parse_extra_fields({})
+
+    assert extra["price_per_unit"] == "לא זמין"
+    assert extra["suggested_replacement"] == "אין"
+    assert extra["packaging"] == "לא ידוע"
+    assert extra["inventory"] == "Mouser: לא ידוע"

@@ -9,8 +9,20 @@ from src.core.risk_engine import RiskEngine
 from src.data.case_manager import CaseManager
 from src.services.gatekeeper import ApiGatekeeper
 from src.services.mouser_api import MouserClient
+from src.shared.translations import translate
 
 load_dotenv()
+
+# שדות מורחבים המגיעים מ-cross_ref (זמינים כרגע רק כשה-Gatekeeper מחובר בפועל ל-Mouser)
+# יחד עם ערכי ברירת מחדל בעברית לרכיב שלא נמצא עבורו מידע.
+EXTRA_FIELD_DEFAULTS = {
+    "inventory": "לא ידוע",
+    "lead_time": "זמן אספקה: לא ידוע",
+    "price_per_unit": "לא זמין",
+    "suggested_replacement": "אין",
+    "rohs_status": "לא ידוע",
+    "packaging": "לא ידוע",
+}
 
 
 class ShalomCI_SDK:
@@ -63,11 +75,18 @@ class ShalomCI_SDK:
                 comp["manufacturer"] = "N/A"
                 comp["lifecycle_status"] = "N/A"
                 comp["risk_score"] = 5
+
+            for field, default in EXTRA_FIELD_DEFAULTS.items():
+                comp[field] = (data or {}).get(field, default)
         print("DEBUG: העשרה הסתיימה בהצלחה.")
 
     async def evaluate_risks(self, enriched_data: list) -> dict:
+        # ציון הסיכון מחושב תחילה על בסיס lifecycle_status באנגלית (מפתחות ה-RiskEngine
+        # תואמי-אנגלית) - רק לאחר מכן מתורגם השדה לעברית לצורך תצוגה ב-GUI/דוחות.
         evaluated = self.risk_engine.evaluate_components(enriched_data)
         project_score = self.risk_engine.calculate_project_score(evaluated)
+        for comp in evaluated:
+            comp["lifecycle_status"] = translate(comp.get("lifecycle_status", "Unknown"))
         return {"project_score": project_score, "components": evaluated}
 
     async def find_mitigations(self, evaluated_components: list, project_name: str = "Default Project") -> list:

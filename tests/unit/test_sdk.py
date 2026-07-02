@@ -50,6 +50,29 @@ async def test_find_mitigations_and_case_opening(sdk):
     assert open_cases[0]["mpn"] == "DANGEROUS_PART"
 
 
+async def test_enrich_components_fills_extra_field_defaults_without_client(sdk):
+    """ללא קליינט Mouser מחובר, השדות המורחבים (מלאי, זמן אספקה וכו') מקבלים ברירת מחדל בעברית."""
+    await sdk.initialize()
+    components = [{"mpn": "NE555"}]
+
+    await sdk.enrich_components(components)
+
+    assert components[0]["inventory"] == "לא ידוע"
+    assert components[0]["lead_time"] == "זמן אספקה: לא ידוע"
+    assert components[0]["suggested_replacement"] == "אין"
+
+
+async def test_evaluate_risks_translates_lifecycle_status_after_scoring(sdk):
+    """מוודא שה-risk_score מחושב לפי הטקסט האנגלי המקורי, ורק לאחר מכן lifecycle_status מתורגם לעברית."""
+    await sdk.initialize()
+    components = [{"mpn": "NE555", "lifecycle_status": "Obsolete"}]
+
+    result = await sdk.evaluate_risks(components)
+
+    assert result["components"][0]["risk_score"] == 1
+    assert result["components"][0]["lifecycle_status"] == "מיושן"
+
+
 def test_sdk_has_no_default_client_without_env_key(sdk):
     """ללא MOUSER_API_KEY בסביבה, ה-SDK לא אמור להקים קליינט ברירת מחדל (fallback ל-N/A)."""
     assert sdk.cross_ref.api_client is None
