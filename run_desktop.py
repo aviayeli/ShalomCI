@@ -12,7 +12,14 @@ import threading
 import webbrowser
 from pathlib import Path
 
-APP_PATH = str(Path(__file__).resolve().parent / "src" / "gui" / "app.py")
+def _base_dir() -> Path:
+    """Resolve the app's base directory, whether run from source or frozen by PyInstaller."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    return Path(__file__).resolve().parent
+
+
+APP_PATH = str(_base_dir() / "src" / "gui" / "app.py")
 
 
 def find_free_port() -> int:
