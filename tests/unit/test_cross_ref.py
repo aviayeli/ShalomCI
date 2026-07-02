@@ -1,8 +1,9 @@
 from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
 
-from src.core.cross_ref import CrossReferenceEngine
+from src.core.cross_ref import NETWORK_ERROR_STATUS, CrossReferenceEngine
 
 
 @pytest.mark.asyncio
@@ -88,3 +89,27 @@ async def test_get_part_data_mouser_error_response_search_results_is_none():
     data = await engine.get_part_data("NE555")
 
     assert data == {"manufacturer": "Unknown", "lifecycle": "Unknown", "risk_score": 5}
+
+
+@pytest.mark.asyncio
+async def test_get_part_data_network_error_marks_distinct_status():
+    """מוודא שכשל רשת (אחרי שה-Gatekeeper מיצה Retries) מסומן בסטטוס ייעודי, לא כ'Unknown' רגיל."""
+    mock_client = AsyncMock()
+    mock_client.search_part.side_effect = httpx.ConnectError("Connection refused")
+
+    engine = CrossReferenceEngine(api_client=mock_client)
+    data = await engine.get_part_data("NE555")
+
+    assert data == {"manufacturer": NETWORK_ERROR_STATUS, "lifecycle": NETWORK_ERROR_STATUS, "risk_score": 0}
+
+
+@pytest.mark.asyncio
+async def test_get_part_data_http_status_error_marks_distinct_status():
+    """מוודא ששגיאת HTTP (למשל 500 שחזרה מ-raise_for_status) מטופלת כשגיאת רשת ולא כ'Error' כללי."""
+    mock_client = AsyncMock()
+    mock_client.search_part.side_effect = httpx.HTTPStatusError("Server Error", request=None, response=None)
+
+    engine = CrossReferenceEngine(api_client=mock_client)
+    data = await engine.get_part_data("NE555")
+
+    assert data == {"manufacturer": NETWORK_ERROR_STATUS, "lifecycle": NETWORK_ERROR_STATUS, "risk_score": 0}

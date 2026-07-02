@@ -12,6 +12,7 @@ project_root = str(Path(__file__).parent.parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from src.core.cross_ref import NETWORK_ERROR_STATUS
 from src.sdk import ShalomCI_SDK
 
 # אייקוני נגישות (WCAG 2.2) - ההתראה על סטטוס לא מסתמכת על צבע בלבד, תמיד מלווה בטקסט ובאייקון מפורש.
@@ -75,6 +76,25 @@ async def run_analysis(file_path: str, filename: str):
         await sdk.close()
 
 
+@st.cache_data(show_spinner=False)
+def cached_analysis(file_bytes: bytes, filename: str):  # pragma: no cover - חיווט Streamlit/asyncio (Proxy); run_analysis נבדק ישירות
+    """
+    עוטף את run_analysis במטמון של Streamlit, ממופתח (keyed) לפי hash של תוכן הקובץ ושמו.
+    Streamlit מריץ מחדש את כל הסקריפט בכל אינטראקציית UI (rerun) - בלי מטמון זה, כל קליק
+    היה מפעיל שוב את כל העשרת ה-API (עד עשרות רכיבים מול Mouser) ועלול לגרום לחסימת קצב.
+    כתוצאה מהמטמון, ההעשרה תרוץ פעם אחת ויחידה לכל תוכן קובץ ייחודי שהועלה.
+    """
+    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+
+    try:
+        return asyncio.run(run_analysis(tmp_path, filename))
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלוגיקה הטהורה נבדקת ב-status_icon/build_rows/run_analysis
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
@@ -84,13 +104,17 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
 
     if uploaded_file and st.button("🚀 הפעל ניתוח"):
         with st.spinner("מעבד ומעשיר נתונים (זה לוקח רגע)..."):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_file.name).suffix) as tmp:
-                tmp.write(uploaded_file.getvalue())
-                tmp_path = tmp.name
-
             try:
-                # וודא שזה מה שכתוב אצלך:
-                score, data = asyncio.run(run_analysis(tmp_path, uploaded_file.name))
+                score, data = cached_analysis(uploaded_file.getvalue(), uploaded_file.name)
+
+                # אם ה-Gatekeeper מיצה את כל ה-Retry-ים מול Mouser, נחשוף זאת למשתמש במפורש
+                # במקום להציג בשקט טבלה עם נתוני N/A/❓ בלבד.
+                if any(c.get("manufacturer") == NETWORK_ERROR_STATUS for c in data):
+                    st.warning(
+                        "⚠️ שגיאת רשת בפנייה ל-Mouser API (לאחר מספר ניסיונות חוזרים). "
+                        "מוצגים נתוני ברירת מחדל עבור חלק מהרכיבים - נסו שוב מאוחר יותר."
+                    )
+
                 st.metric("ציון בריאות", f"{score} / 5.0")
 
                 df = pd.DataFrame(build_rows(data))
@@ -107,8 +131,6 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
 
             except Exception as e:
                 st.error(f"שגיאה בתהליך: {e}. וודא שמפתחות ה-API תקינים ב-env.")
-            finally:
-                if os.path.exists(tmp_path): os.remove(tmp_path)
 
 
 if __name__ == "__main__":

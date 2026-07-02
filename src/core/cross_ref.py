@@ -1,5 +1,12 @@
 from typing import Any, Dict, List
 
+import httpx
+
+# מסמן סטטוס ייעודי לשגיאת רשת אמיתית (ה-Gatekeeper מיצה את כל ניסיונות ה-Retry),
+# בניגוד ל"Unknown"/"Error" עסקיים רגילים - כדי שממשק המשתמש (GUI) יוכל להבחין בין
+# "לא מצאנו את הרכיב" לבין "לא הצלחנו בכלל להגיע ל-Mouser" ולהציג התראה מפורשת על כך.
+NETWORK_ERROR_STATUS = "Network Error"
+
 
 class CrossReferenceEngine:
     """
@@ -41,6 +48,10 @@ class CrossReferenceEngine:
                 "lifecycle": lifecycle,
                 "risk_score": risk_map.get(lifecycle, 3)
             }
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            # ה-Gatekeeper כבר מיצה את כל ניסיונות ה-Retry - זו שגיאת רשת אמיתית ולא רכיב לא ידוע.
+            print(f"DEBUG: שגיאת רשת בשליפת נתוני רכיב {mpn}: {e}")
+            return {"manufacturer": NETWORK_ERROR_STATUS, "lifecycle": NETWORK_ERROR_STATUS, "risk_score": 0}
         except Exception as e:
             print(f"DEBUG: שגיאה בשליפת נתוני רכיב {mpn}: {e}")
             return {"manufacturer": "Error", "lifecycle": "Error", "risk_score": 5}
