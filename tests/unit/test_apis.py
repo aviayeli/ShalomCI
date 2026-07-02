@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
+from src.services.digikey_api import DigiKeyClient
 from src.services.gatekeeper import ApiGatekeeper
 from src.services.mouser_api import MouserClient
 
@@ -118,3 +119,63 @@ def test_parse_extra_fields_defaults_for_missing_data():
     assert extra["suggested_replacement"] == "אין"
     assert extra["packaging"] == "לא ידוע"
     assert extra["inventory"] == "Mouser: לא ידוע"
+
+
+def test_digikey_client_missing_credentials(gatekeeper):
+    """מוודא חסימה בהקמת קליינט DigiKey ללא Client ID/Secret."""
+    with pytest.raises(ValueError, match="DigiKey client ID and secret are required"):
+        DigiKeyClient(client_id="", client_secret="secret", gatekeeper=gatekeeper)
+    with pytest.raises(ValueError, match="DigiKey client ID and secret are required"):
+        DigiKeyClient(client_id="id", client_secret="", gatekeeper=gatekeeper)
+
+
+async def test_digikey_client_fetches_and_caches_access_token(gatekeeper, monkeypatch):
+    """מוודא שהטוקן נשלף פעם אחת מ-OAuth2 Client Credentials וממוחזר בקריאה השנייה."""
+    client = DigiKeyClient(client_id="fake_id", client_secret="fake_secret", gatekeeper=gatekeeper)
+
+    token_response = MockResponse({"access_token": "abc123", "expires_in": 600})
+    part_response = MockResponse({"Product": {"ManufacturerLeadWeeks": None}})
+    mock_request = AsyncMock(side_effect=[token_response, part_response, part_response])
+    monkeypatch.setattr(gatekeeper.client, "request", mock_request)
+
+    await client.search_part("NE555")
+    await client.search_part("NE555")
+
+    # קריאה אחת בלבד לטוקן (POST) ושתי קריאות ל-productdetails (GET) - הטוקן ממוחזר
+    assert mock_request.call_count == 3
+    token_call_args, token_call_kwargs = mock_request.call_args_list[0]
+    assert token_call_args[0] == "POST"
+    assert token_call_args[1] == DigiKeyClient.TOKEN_URL
+    search_call_args, search_call_kwargs = mock_request.call_args_list[1]
+    assert search_call_args[0] == "GET"
+    assert "NE555" in search_call_args[1]
+    assert search_call_kwargs["headers"]["Authorization"] == "Bearer abc123"
+
+
+def test_digikey_parse_extra_fields_extracts_and_translates_full_product():
+    """בדיקה שהחילוץ מתוך מבנה ProductDetails מלא של DigiKey מתרגם ומעצב את כל השדות."""
+    payload = {
+        "Product": {
+            "ProductStatus": {"Status": "Active"},
+            "QuantityAvailable": 24755,
+            "UnitPrice": 1.85,
+            "ManufacturerLeadWeeks": "9 Weeks",
+        }
+    }
+
+    extra = DigiKeyClient.parse_extra_fields(payload)
+
+    assert extra["digikey_lifecycle"] == "פעיל"
+    assert extra["digikey_inventory"] == "DigiKey: 24,755"
+    assert extra["digikey_lead_time"] == "זמן אספקה: 9 שבועות"
+    assert extra["digikey_price_per_unit"] == "$1.85"
+
+
+def test_digikey_parse_extra_fields_defaults_for_missing_data():
+    """מוודא שתגובת DigiKey ריקה (למשל מק"ט לא נמצא) מקבלת ברירות מחדל בעברית ולא קורסת."""
+    extra = DigiKeyClient.parse_extra_fields({})
+
+    assert extra["digikey_lifecycle"] == "לא ידוע"
+    assert extra["digikey_inventory"] == "DigiKey: לא ידוע"
+    assert extra["digikey_lead_time"] == "זמן אספקה: לא ידוע"
+    assert extra["digikey_price_per_unit"] == "לא זמין"

@@ -21,7 +21,7 @@ ShalomCI/
 │   │   ├── gatekeeper.py      # API Gatekeeper - שומר הסף המרכזי (תורים, השהיות)
 │   │   ├── mouser_api.py      # אינטגרציה מול Mouser (מחובר בפועל דרך ה-SDK)
 │   │   ├── octopart_api.py    # אינטגרציה מול Octopart (GraphQL) - stub, שלב עתידי
-│   │   └── digikey_api.py     # אינטגרציה מול DigiKey (OAuth2) - stub, שלב עתידי
+│   │   └── digikey_api.py     # אינטגרציה מול DigiKey Product Information V4 (OAuth2) - מומש ומחובר בפועל
 │   ├── data/
 │   │   └── case_manager.py    # ניהול מקרים מקומי (Cases) עבור רכיבים ללא חלופה
 │   ├── shared/
@@ -61,8 +61,9 @@ ShalomCI/
 - **Octopart Bucket:** ניהול בקשות GraphQL.
 - **מנגנון Retries:** יישום Exponential Backoff למקרה של חסימות זמניות או שגיאות 429 (Too Many Requests), כך שבקשה שנכשלה תוחזר לתור ותמתין (לדוגמה, 2 שניות, 4 שניות, 8 שניות) לפני ניסיון חוזר.
 - שירותי ה-API (כמו `mouser_api.py`) יורשו לקבל נתונים רק באמצעות מתודה כמו `Gatekeeper.request()`.
-- **חיבור בפועל (Wiring):** `ShalomCI_SDK.__init__` מקים `ApiGatekeeper` תמיד, ובונה `MouserClient` דרך שיטת עזר פרטית (`_build_default_client`) רק אם `MOUSER_API_KEY` מוגדר בסביבה (נטען מ-`.env` באמצעות `python-dotenv`). אם לא הוזרק `api_client` חיצוני (Dependency Injection לצורכי בדיקות) ואין מפתח בסביבה, `CrossReferenceEngine` נופל בחזרה לערכי N/A - כך שהמערכת אף פעם לא קורסת בהיעדר מפתחות, אלא רק מדווחת נתונים חסרים. `SDK.close()` סוגר את חיבור ה-`httpx.AsyncClient` של ה-Gatekeeper בסיום כל הרצה (CLI ו-GUI).
-- **מגבלת שלב נוכחי:** ה-Gatekeeper מוכן לשלושת הספקים (`limiters` עבור mouser/octopart/digikey), אך רק קליינט Mouser מומש ומחובר בפועל. `octopart_api.py` ו-`digikey_api.py` נותרים stubs ריקים לשלב עתידי; `find_alternatives` (חיפוש חלופות FFF) דורש קליינט התומך בקרוס-רפרנס (Octopart) ומחזיר רשימה ריקה בבטחה כשמחובר קליינט שאינו תומך בכך (Mouser).
+- **חיבור בפועל (Wiring):** `ShalomCI_SDK.__init__` מקים `ApiGatekeeper` תמיד, ובונה `MouserClient` ו-`DigiKeyClient` דרך שיטות עזר פרטיות סימטריות (`_build_default_client` / `_build_digikey_client`) רק אם `MOUSER_API_KEY` או `DIGIKEY_CLIENT_ID`+`DIGIKEY_CLIENT_SECRET` בהתאמה מוגדרים בסביבה (נטענים מ-`.env` באמצעות `python-dotenv`). אם לא הוזרקו קליינטים חיצוניים (Dependency Injection לצורכי בדיקות) ואין מפתחות בסביבה, `CrossReferenceEngine` נופל בחזרה לערכי N/A/ברירות מחדל בעברית - כך שהמערכת אף פעם לא קורסת בהיעדר מפתחות, אלא רק מדווחת נתונים חסרים. `SDK.close()` סוגר את חיבור ה-`httpx.AsyncClient` של ה-Gatekeeper בסיום כל הרצה (CLI ו-GUI).
+- **DigiKey (Product Information V4) - מומש ומחובר בפועל:** `DigiKeyClient` (ב-`services/digikey_api.py`) מאמת מול DigiKey באמצעות זרימת OAuth2 Client Credentials (`POST /v1/oauth2/token`, עם מיחזור טוקן עד לפקיעת תוקף) ושולף פרטי רכיב מול `GET /products/v4/search/{mpn}/productdetails`. **כל** קריאה - כולל שליפת הטוקן - מנותבת דרך `ApiGatekeeper.request(provider="digikey", ...)`. הנתונים (מחזור חיים/מלאי/זמן אספקה/מחיר) נשלפים על ידי `CrossReferenceEngine.get_digikey_data()` **בנוסף** ל-Mouser (side-by-side, לא כתחליף) ומוצגים בעמודות GUI נפרדות (סעיף 6) - אינם משפיעים על `risk_score`/`lifecycle_status` המרכזיים שממשיכים להיגזר אך ורק מ-Mouser.
+- **מגבלת שלב נוכחי:** ה-Gatekeeper מוכן לשלושת הספקים (`limiters` עבור mouser/octopart/digikey); Mouser ו-DigiKey מומשו ומחוברים בפועל. `octopart_api.py` נותר stub ריק לשלב עתידי; `find_alternatives` (חיפוש חלופות FFF) דורש קליינט התומך בקרוס-רפרנס (Octopart) ומחזיר רשימה ריקה בבטחה כשמחובר קליינט שאינו תומך בכך (Mouser/DigiKey).
 
 ## 4. ניהול נתונים (Data & Case Management)
 כדי לעמוד ביעדי ה-MVP ולנהל את מנגנון ה-"Case Management" בצורה חכמה מבלי להקים שרת מסד נתונים כבד, נשתמש ב-**SQLite** מקומי (מובנה ב-Python).

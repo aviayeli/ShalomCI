@@ -59,10 +59,18 @@
 - [x] **סקריפט בנייה:** `build.py` (מופעל דרך `uv run python build.py`) - `--onedir --windowed --collect-all streamlit --copy-metadata streamlit --copy-metadata altair --add-data "src;src"`.
 - [x] **`pyinstaller` כתלות פיתוח:** נוסף ל-`dependency-groups.dev` ב-`pyproject.toml`/`uv.lock` באמצעות `uv add --dev pyinstaller` בלבד (ללא `pip`).
 
+## Phase 9: אינטגרציית DigiKey (Product Information V4 / SupplyChain)
+- [x] **סודות והגדרה:** `DIGIKEY_CLIENT_ID`/`DIGIKEY_CLIENT_SECRET` ב-`.env-example`, נטענים אוטומטית על ידי `ShalomCI_SDK._build_digikey_client()` (אותו דפוס בדיוק כמו `_build_default_client()` של Mouser).
+- [x] **קליינט DigiKey אמיתי:** `src/services/digikey_api.py` - `DigiKeyClient` מממש זרימת OAuth2 Client Credentials מול `POST /v1/oauth2/token` (עם מיחזור טוקן עד לפקיעת תוקף), ושליפת רכיב מול `GET /products/v4/search/{mpn}/productdetails`. **כל** קריאה (כולל שליפת הטוקן) מנותבת דרך `ApiGatekeeper.request(provider="digikey", ...)` - אין קריאות רשת ישירות עוקפות.
+- [x] **חילוץ שדות:** `DigiKeyClient.parse_extra_fields` מחלץ ומתרגם מחזור חיים (`ProductStatus.Status`), מלאי (`QuantityAvailable`), זמן אספקה (`ManufacturerLeadWeeks`) ומחיר (`UnitPrice`).
+- [x] **מיזוג side-by-side ב-SDK:** `CrossReferenceEngine.get_digikey_data()` (ב-`cross_ref.py`) נקרא מתוך `enrich_components` בנוסף (לא במקום) ל-`get_part_data` של Mouser; נכשל בעדינות לברירות מחדל בעברית (`DIGIKEY_FIELD_DEFAULTS`) ואינו משפיע על `risk_score`/`lifecycle_status` המרכזיים.
+- [x] **עמודות GUI חדשות:** `build_rows` ב-`app.py` מוסיף "מחזור חיים (DigiKey)", "מלאי (DigiKey)", "זמן אספקה (DigiKey)", "מחיר ליחידה (DigiKey)" לצד עמודות Mouser הקיימות; `sort_options(df)` הדינמי (Phase 7) קולט אותן אוטומטית ללא כל שינוי בתפריט המיון עצמו.
+- [x] **TDD:** `tests/unit/test_apis.py` (קליינט DigiKey: אימות, מיחזור טוקן, חילוץ שדות), `tests/unit/test_cross_ref.py` (מיזוג/ברירות מחדל/שגיאות רשת), `tests/unit/test_sdk.py` (חיווט מהסביבה + מיזוג ב-enrich_components), `tests/unit/test_gui_app.py` (עמודות חדשות בטבלה). 72 בדיקות עוברות, כיסוי כולל 93%.
+
 ## פריטים שנדחו במכוון מעבר ל-MVP (Out of Scope, לא חוסמים סגירת שלב הפיתוח)
-- **קליינטים ל-Octopart/DigiKey:** `src/services/octopart_api.py` ו-`digikey_api.py` נותרים stubs ריקים במכוון (תועד כבר ב-PLAN סעיף 3 כמגבלת שלב נוכחי); `cross_ref.find_alternatives` מוגן להחזיר רשימה ריקה בבטחה כשמחובר קליינט שאינו תומך בקרוס-רפרנס (כמו Mouser). שלב עתידי, לא חלק מה-MVP הנוכחי.
-- **כיסוי בדיקות מעבר ל-85%:** הכיסוי הכולל עומד על כ-92% (מעל סף ה-85% הנדרש), עם 59 בדיקות עוברות. `cross_ref.py`/`sdk.py`/`gatekeeper.py` אינם מכוסים ב-100% (מסלולי שגיאת רשת קיצוניים) - שיפור אפשרי לשלב תחזוקה עתידי, לא חוסם.
+- **קליינט ל-Octopart:** `src/services/octopart_api.py` נותר stub ריק במכוון (תועד כבר ב-PLAN סעיף 3 כמגבלת שלב נוכחי); `cross_ref.find_alternatives` מוגן להחזיר רשימה ריקה בבטחה כשמחובר קליינט שאינו תומך בקרוס-רפרנס (כמו Mouser/DigiKey). שלב עתידי, לא חלק מה-MVP הנוכחי.
+- **כיסוי בדיקות מעבר ל-85%:** הכיסוי הכולל עומד על כ-93% (מעל סף ה-85% הנדרש), עם 72 בדיקות עוברות. `cross_ref.py`/`sdk.py`/`gatekeeper.py` אינם מכוסים ב-100% (מסלולי שגיאת רשת קיצוניים) - שיפור אפשרי לשלב תחזוקה עתידי, לא חוסם.
 
 ---
 ## סטטוס פרויקט: שלב הפיתוח הושלם (Development Phase Complete)
-כל שלבי הפיתוח שהוגדרו במסמך זה (Phase 1 עד Phase 8) הושלמו ואומתו בבדיקות, כולל שלב הליטוש הסופי (ציון סיכון מצטבר עם הסבר, מיון דינמי, ואריזת Desktop). המשך עבודה על הפריטים שנדחו במכוון (Octopart/DigiKey, כיסוי 100%) ינוהל כיוזמות נפרדות מחוץ ל-MVP הנוכחי, בכפוף לאותה מתודולוגיית עבודה (PRD → PLAN → TODO → קוד) המתוארת ב-`docs/CLAUDE.md`.
+כל שלבי הפיתוח שהוגדרו במסמך זה (Phase 1 עד Phase 9) הושלמו ואומתו בבדיקות, כולל שלב הליטוש הסופי (ציון סיכון מצטבר עם הסבר, מיון דינמי, ואריזת Desktop) ואינטגרציית DigiKey המלאה. המשך עבודה על הפריטים שנדחו במכוון (Octopart, כיסוי 100%) ינוהל כיוזמות נפרדות מחוץ ל-MVP הנוכחי, בכפוף לאותה מתודולוגיית עבודה (PRD → PLAN → TODO → קוד) המתוארת ב-`docs/CLAUDE.md`.

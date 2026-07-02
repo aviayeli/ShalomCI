@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 
-from src.core.cross_ref import NETWORK_ERROR_STATUS, CrossReferenceEngine
+from src.core.cross_ref import DIGIKEY_FIELD_DEFAULTS, NETWORK_ERROR_STATUS, CrossReferenceEngine
 from src.services.gatekeeper import ApiGatekeeper
 from src.services.mouser_api import MouserClient
 
@@ -139,3 +139,59 @@ async def test_get_part_data_http_status_error_marks_distinct_status():
     data = await engine.get_part_data("NE555")
 
     assert data == {"manufacturer": NETWORK_ERROR_STATUS, "lifecycle": NETWORK_ERROR_STATUS, "risk_score": 0}
+
+
+@pytest.mark.asyncio
+async def test_get_digikey_data_no_client_returns_defaults():
+    """ללא קליינט DigiKey מחובר, מוחזרות ברירות המחדל בעברית ולא נזרקת שגיאה."""
+    engine = CrossReferenceEngine(api_client=None, digikey_client=None)
+
+    data = await engine.get_digikey_data("NE555")
+
+    assert data == DIGIKEY_FIELD_DEFAULTS
+
+
+@pytest.mark.asyncio
+async def test_get_digikey_data_merges_parsed_fields():
+    """מוודא שכאשר קליינט DigiKey מחובר, השדות מחולצים דרך DigiKeyClient.parse_extra_fields."""
+    mock_client = AsyncMock()
+    mock_client.search_part.return_value = {
+        "Product": {
+            "ProductStatus": {"Status": "Active"},
+            "QuantityAvailable": 100,
+            "UnitPrice": 2.5,
+            "ManufacturerLeadWeeks": "4 Weeks",
+        }
+    }
+
+    engine = CrossReferenceEngine(digikey_client=mock_client)
+    data = await engine.get_digikey_data("NE555")
+
+    assert data["digikey_lifecycle"] == "פעיל"
+    assert data["digikey_inventory"] == "DigiKey: 100"
+    assert data["digikey_price_per_unit"] == "$2.50"
+    mock_client.search_part.assert_awaited_once_with("NE555")
+
+
+@pytest.mark.asyncio
+async def test_get_digikey_data_network_error_returns_defaults():
+    """מוודא שכשל רשת מול DigiKey (לאחר Retries של ה-Gatekeeper) חוזר לברירות מחדל ולא קורס."""
+    mock_client = AsyncMock()
+    mock_client.search_part.side_effect = httpx.ConnectError("Connection refused")
+
+    engine = CrossReferenceEngine(digikey_client=mock_client)
+    data = await engine.get_digikey_data("NE555")
+
+    assert data == DIGIKEY_FIELD_DEFAULTS
+
+
+@pytest.mark.asyncio
+async def test_get_digikey_data_generic_error_returns_defaults():
+    """מוודא ששגיאה כללית בלתי צפויה מ-DigiKey חוזרת לברירות מחדל ולא קורסת."""
+    mock_client = AsyncMock()
+    mock_client.search_part.side_effect = RuntimeError("boom")
+
+    engine = CrossReferenceEngine(digikey_client=mock_client)
+    data = await engine.get_digikey_data("NE555")
+
+    assert data == DIGIKEY_FIELD_DEFAULTS

@@ -2,6 +2,7 @@ from typing import Any, Dict, List
 
 import httpx
 
+from src.services.digikey_api import DigiKeyClient
 from src.services.mouser_api import MouserClient
 
 # מסמן סטטוס ייעודי לשגיאת רשת אמיתית (ה-Gatekeeper מיצה את כל ניסיונות ה-Retry),
@@ -9,15 +10,26 @@ from src.services.mouser_api import MouserClient
 # "לא מצאנו את הרכיב" לבין "לא הצלחנו בכלל להגיע ל-Mouser" ולהציג התראה מפורשת על כך.
 NETWORK_ERROR_STATUS = "Network Error"
 
+# ברירות מחדל בעברית לנתוני DigiKey - מוצגים לצד Mouser (side-by-side), אינם משפיעים
+# על risk_score המרכזי שממשיך להיות מחושב אך ורק מנתוני Mouser/lifecycle_status.
+DIGIKEY_FIELD_DEFAULTS = {
+    "digikey_lifecycle": "לא ידוע",
+    "digikey_inventory": "DigiKey: לא ידוע",
+    "digikey_lead_time": "זמן אספקה: לא ידוע",
+    "digikey_price_per_unit": "לא זמין",
+}
+
 
 class CrossReferenceEngine:
     """
     מנוע לאיתור חלופות (FFF - Form, Fit, Function) ונתוני רכיבים.
-    פועל באמצעות קליינט חיצוני (כגון Octopart/Nexar) המנותב דרך Gatekeeper.
+    פועל באמצעות קליינט חיצוני (כגון Octopart/Nexar) המנותב דרך Gatekeeper, וכן
+    (אופציונלית) קליינט DigiKey נפרד להעשרה משלימה של אותו רכיב.
     """
 
-    def __init__(self, api_client=None):
+    def __init__(self, api_client=None, digikey_client: DigiKeyClient = None):
         self.api_client = api_client
+        self.digikey_client = digikey_client
 
     async def get_part_data(self, mpn: str) -> Dict[str, Any]:
         """
@@ -62,6 +74,25 @@ class CrossReferenceEngine:
         except Exception as e:
             print(f"DEBUG: שגיאה בשליפת נתוני רכיב {mpn}: {e}")
             return {"manufacturer": "Error", "lifecycle": "Error", "risk_score": 5}
+
+    async def get_digikey_data(self, mpn: str) -> Dict[str, Any]:
+        """
+        שליפת נתוני DigiKey משלימים (מחזור חיים, מלאי, זמן אספקה, מחיר) המוצגים לצד
+        Mouser ב-GUI. תמיד מנותב דרך ה-Gatekeeper (via DigiKeyClient). אינה משפיעה על
+        risk_score המרכזי - כשל/העדר קליינט מחזירים ברירות מחדל בעברית, לא זורקים.
+        """
+        if not self.digikey_client:
+            return dict(DIGIKEY_FIELD_DEFAULTS)
+
+        try:
+            payload = await self.digikey_client.search_part(mpn)
+            return DigiKeyClient.parse_extra_fields(payload)
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            print(f"DEBUG: שגיאת רשת בשליפת נתוני DigiKey עבור {mpn}: {e}")
+            return dict(DIGIKEY_FIELD_DEFAULTS)
+        except Exception as e:
+            print(f"DEBUG: שגיאה בשליפת נתוני DigiKey עבור {mpn}: {e}")
+            return dict(DIGIKEY_FIELD_DEFAULTS)
 
     async def find_alternatives(self, mpn: str) -> List[Dict[str, Any]]:
         """

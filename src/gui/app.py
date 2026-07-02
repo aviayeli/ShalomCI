@@ -56,6 +56,10 @@ def build_rows(components: list) -> list:
             "חלופה מוצעת (Mouser)": c.get("suggested_replacement", "אין"),
             "תאימות RoHS": c.get("rohs_status", "לא ידוע"),
             "צורת אריזה": c.get("packaging", "לא ידוע"),
+            "מחזור חיים (DigiKey)": c.get("digikey_lifecycle", "לא ידוע"),
+            "מלאי (DigiKey)": c.get("digikey_inventory", "DigiKey: לא ידוע"),
+            "זמן אספקה (DigiKey)": c.get("digikey_lead_time", "זמן אספקה: לא ידוע"),
+            "מחיר ליחידה (DigiKey)": c.get("digikey_price_per_unit", "לא זמין"),
             "חלופות": ", ".join([a.get("mpn", "") for a in c.get("alternatives", [])]) if c.get(
                 "alternatives") else "אין"
         })

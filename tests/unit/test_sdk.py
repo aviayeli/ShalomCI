@@ -3,12 +3,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src.sdk import ShalomCI_SDK
+from src.services.digikey_api import DigiKeyClient
 from src.services.mouser_api import MouserClient
 
 
 @pytest.fixture
 async def sdk(tmp_path, monkeypatch):
     monkeypatch.delenv("MOUSER_API_KEY", raising=False)
+    monkeypatch.delenv("DIGIKEY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("DIGIKEY_CLIENT_SECRET", raising=False)
     db_file = tmp_path / "test_cases.db"
     instance = ShalomCI_SDK(db_path=str(db_file))
     yield instance
@@ -103,3 +106,56 @@ async def test_sdk_explicit_api_client_overrides_env(tmp_path, monkeypatch):
         assert instance.cross_ref.api_client is injected_client
     finally:
         await instance.close()
+
+
+def test_sdk_has_no_digikey_client_without_env_keys(sdk):
+    """ללא DIGIKEY_CLIENT_ID/SECRET בסביבה, ה-SDK לא אמור להקים קליינט DigiKey (fallback לברירות מחדל)."""
+    assert sdk.cross_ref.digikey_client is None
+
+
+async def test_sdk_builds_digikey_client_from_env_keys(tmp_path, monkeypatch):
+    """כאשר DIGIKEY_CLIENT_ID/SECRET מוגדרים בסביבה, ה-SDK אמור להקים DigiKeyClient דרך ה-Gatekeeper אוטומטית."""
+    monkeypatch.setenv("DIGIKEY_CLIENT_ID", "fake_id_from_env")
+    monkeypatch.setenv("DIGIKEY_CLIENT_SECRET", "fake_secret_from_env")
+    db_file = tmp_path / "test_cases.db"
+
+    instance = ShalomCI_SDK(db_path=str(db_file))
+    try:
+        assert isinstance(instance.cross_ref.digikey_client, DigiKeyClient)
+        assert instance.cross_ref.digikey_client.client_id == "fake_id_from_env"
+        assert instance.cross_ref.digikey_client.gatekeeper is instance.gatekeeper
+    finally:
+        await instance.close()
+
+
+async def test_sdk_explicit_digikey_client_overrides_env(tmp_path, monkeypatch):
+    """אם מוזרק digikey_client ידנית, הוא גובר על בניית ברירת המחדל מהסביבה."""
+    monkeypatch.setenv("DIGIKEY_CLIENT_ID", "fake_id_from_env")
+    monkeypatch.setenv("DIGIKEY_CLIENT_SECRET", "fake_secret_from_env")
+    db_file = tmp_path / "test_cases.db"
+    injected_client = AsyncMock()
+
+    instance = ShalomCI_SDK(db_path=str(db_file), digikey_client=injected_client)
+    try:
+        assert instance.cross_ref.digikey_client is injected_client
+    finally:
+        await instance.close()
+
+
+async def test_enrich_components_merges_digikey_fields_alongside_mouser(sdk):
+    """מוודא ש-enrich_components ממזג את שדות ה-DigiKey (side-by-side) גם ללא קליינט Mouser."""
+    await sdk.initialize()
+    sdk.cross_ref.get_digikey_data = AsyncMock(return_value={
+        "digikey_lifecycle": "פעיל",
+        "digikey_inventory": "DigiKey: 500",
+        "digikey_lead_time": "זמן אספקה: 2 שבועות",
+        "digikey_price_per_unit": "$0.42",
+    })
+    components = [{"mpn": "NE555"}]
+
+    await sdk.enrich_components(components)
+
+    assert components[0]["digikey_lifecycle"] == "פעיל"
+    assert components[0]["digikey_inventory"] == "DigiKey: 500"
+    assert components[0]["digikey_price_per_unit"] == "$0.42"
+    sdk.cross_ref.get_digikey_data.assert_awaited_once_with("NE555")

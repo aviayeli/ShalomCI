@@ -47,6 +47,10 @@ def test_build_rows_defaults_for_missing_fields():
     assert rows[0]["ציון סיכון"] == 0
     assert rows[0]["מלאי"] == "לא ידוע"
     assert rows[0]["חלופה מוצעת (Mouser)"] == "אין"
+    assert rows[0]["מחזור חיים (DigiKey)"] == "לא ידוע"
+    assert rows[0]["מלאי (DigiKey)"] == "DigiKey: לא ידוע"
+    assert rows[0]["זמן אספקה (DigiKey)"] == "זמן אספקה: לא ידוע"
+    assert rows[0]["מחיר ליחידה (DigiKey)"] == "לא זמין"
 
 
 def test_build_rows_includes_extended_mouser_fields():
@@ -69,6 +73,26 @@ def test_build_rows_includes_extended_mouser_fields():
     assert rows[0]["חלופה מוצעת (Mouser)"] == "NE555DR-ALT"
     assert rows[0]["תאימות RoHS"] == "תואם RoHS"
     assert rows[0]["צורת אריזה"] == "Cut Tape"
+
+
+def test_build_rows_includes_digikey_fields_side_by_side_with_mouser():
+    """מוודא ששדות DigiKey מוצגים בעמודות נפרדות משלהן, לצד נתוני Mouser הקיימים באותה שורה."""
+    components = [{
+        "mpn": "NE555", "manufacturer": "TI", "lifecycle_status": "פעיל", "risk_score": 5,
+        "inventory": "Mouser: 24,755 במלאי",
+        "digikey_lifecycle": "פעיל",
+        "digikey_inventory": "DigiKey: 1,200",
+        "digikey_lead_time": "זמן אספקה: 4 שבועות",
+        "digikey_price_per_unit": "$1.20",
+    }]
+
+    rows = build_rows(components)
+
+    assert rows[0]["מלאי"] == "Mouser: 24,755 במלאי"
+    assert rows[0]["מחזור חיים (DigiKey)"] == "פעיל"
+    assert rows[0]["מלאי (DigiKey)"] == "DigiKey: 1,200"
+    assert rows[0]["זמן אספקה (DigiKey)"] == "זמן אספקה: 4 שבועות"
+    assert rows[0]["מחיר ליחידה (DigiKey)"] == "$1.20"
 
 
 @pytest.mark.asyncio

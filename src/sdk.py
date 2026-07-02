@@ -7,6 +7,7 @@ from src.core.cross_ref import CrossReferenceEngine
 from src.core.reporter import ExcelReporter
 from src.core.risk_engine import RiskEngine
 from src.data.case_manager import CaseManager
+from src.services.digikey_api import DigiKeyClient
 from src.services.gatekeeper import ApiGatekeeper
 from src.services.mouser_api import MouserClient
 from src.shared.translations import translate
@@ -28,12 +29,15 @@ EXTRA_FIELD_DEFAULTS = {
 class ShalomCI_SDK:
     """שכבת הגישה המרכזית (SDK) עבור מערכת ShalomCI."""
 
-    def __init__(self, db_path: str = "cases.db", api_client=None):
+    def __init__(self, db_path: str = "cases.db", api_client=None, digikey_client=None):
         self.case_manager = CaseManager(db_path)
         self.bom_parser = BomParser()
         self.risk_engine = RiskEngine()
         self.gatekeeper = ApiGatekeeper()
-        self.cross_ref = CrossReferenceEngine(api_client or self._build_default_client())
+        self.cross_ref = CrossReferenceEngine(
+            api_client or self._build_default_client(),
+            digikey_client=digikey_client or self._build_digikey_client(),
+        )
         self.reporter = ExcelReporter()
         self.is_initialized = False
 
@@ -43,6 +47,14 @@ class ShalomCI_SDK:
         if not api_key:
             return None
         return MouserClient(api_key=api_key, gatekeeper=self.gatekeeper)
+
+    def _build_digikey_client(self):
+        """בונה קליינט DigiKey דרך ה-Gatekeeper אם DIGIKEY_CLIENT_ID/SECRET מוגדרים בסביבה."""
+        client_id = os.getenv("DIGIKEY_CLIENT_ID")
+        client_secret = os.getenv("DIGIKEY_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            return None
+        return DigiKeyClient(client_id=client_id, client_secret=client_secret, gatekeeper=self.gatekeeper)
 
     async def initialize(self):
         await self.case_manager.init_db()
@@ -78,6 +90,10 @@ class ShalomCI_SDK:
 
             for field, default in EXTRA_FIELD_DEFAULTS.items():
                 comp[field] = (data or {}).get(field, default)
+
+            # נתוני DigiKey מוצגים side-by-side לצד Mouser - תמיד נשלפים בנפרד, גם אם
+            # ה-Mouser lookup נכשל, ולעולם אינם משפיעים על risk_score/lifecycle_status.
+            comp.update(await self.cross_ref.get_digikey_data(mpn))
         print("DEBUG: העשרה הסתיימה בהצלחה.")
 
     async def evaluate_risks(self, enriched_data: list) -> dict:
