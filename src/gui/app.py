@@ -24,22 +24,18 @@ def status_icon(risk_score: int) -> str:
     """מחזיר אייקון נגישות התואם לרמת הסיכון; ציון לא ידוע (0) מסומן לבדיקה ידנית."""
     return STATUS_ICONS.get(risk_score, "❓")
 
-# CSS מעודכן לתמיכה בטבלה מעוצבת
+# CSS מעודכן: טבלה מעוצבת, כותרות "דביקות" (sticky) בגלילה וניגודיות גבוהה (WCAG)
 RTL_CSS = """
 <style>
     * { direction: rtl !important; text-align: right !important; font-family: 'Segoe UI', sans-serif; }
     .stApp { background-color: #F8F9FA; }
-    /* direction מוגדר במפורש ברמת הבלוק של הטבלה (ולא רק דרך ה-* הכללי) כדי להבטיח
-       שסדר העמודות וזרימת התוכן יהיו נכונים גם כשהדפדפן מרנדר טבלה כרכיב עצמאי */
+    /* direction מפורש ברמת בלוק הטבלה (לא רק ה-* הכללי) כדי להבטיח סדר עמודות נכון גם ברינדור עצמאי */
     .risk-table { direction: rtl; width: 100%; border-collapse: collapse; background-color: white; border: 1px solid #ddd; }
-    .risk-table th { background-color: #0056B3; color: white; padding: 12px; text-align: right; }
-    /* unicode-bidi: isolate מבודד ערכים לועזיים (כגון מק"טים באנגלית) בתוך תא עברי
-       כך שהם יזרמו משמאל-לימין בתוך התא מבלי לשבש את כיוון הטקסט הכללי או את מיקום המקפים */
-    .risk-table td { padding: 10px; border: 1px solid #ddd; text-align: right; unicode-bidi: isolate; }
-    /* עיצוב צבעים */
-    .critical { background-color: #FFCCCC !important; font-weight: bold; }
-    .warning { background-color: #FFFFCC !important; font-weight: bold; }
-    .healthy { background-color: #CCFFCC !important; font-weight: bold; }
+    .risk-table th { padding: 12px; text-align: right; }
+    /* thead th עם !important: תחת border-collapse:collapse, sticky על th רגיל השאיר רק רקע דבוק בגלילה */
+    .risk-table thead th { position: sticky !important; top: 0 !important; background-color: #0056B3 !important; color: white !important; z-index: 100 !important; }
+    /* unicode-bidi: isolate מבודד מק"טים באנגלית בתוך תא עברי; color מפורש מבטיח ניגודיות על רקעים בהירים */
+    .risk-table td { padding: 10px; border: 1px solid #ddd; text-align: right; unicode-bidi: isolate; color: #1a1a1a; }
 </style>
 """
 
@@ -101,42 +97,53 @@ def cached_analysis(file_bytes: bytes, filename: str):  # pragma: no cover - ח�
             os.remove(tmp_path)
 
 
+def render_table(df: pd.DataFrame):  # pragma: no cover - חיווט Streamlit בלבד (Proxy)
+    """טבלה נגישה: th עם scope=col+role=table, עטופה ב-div role=region+aria-label (streamlit.markdown "בולע" aria-label על table)."""
+    html_table = df.style.hide(axis="index").map(
+        lambda val: 'background-color: #FFCCCC' if val == 1 else (
+            'background-color: #FFFFCC' if val in [2, 3] else 'background-color: #CCFFCC'),
+        subset=['ציון סיכון']
+    ).to_html(table_attributes='class="risk-table" role="table"')
+    html_table = html_table.replace("<th ", '<th scope="col" ')
+    st.markdown(f'<div dir="rtl" role="region" aria-label="טבלת נתוני רכיבים מועשרים">{html_table}</div>', unsafe_allow_html=True)
+
+
 def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלוגיקה הטהורה נבדקת ב-status_icon/build_rows/run_analysis
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
     st.title("⚙️ ShalomCI - אינטליגנציית רכיבים")
 
     uploaded_file = st.file_uploader("העלה עץ מוצר (BOM)", type=["xlsx", "csv"])
+    col_run, col_download = st.columns(2)
 
-    if uploaded_file and st.button("🚀 הפעל ניתוח"):
+    if col_run.button("🚀 הפעל ניתוח", disabled=not uploaded_file):
         with st.spinner("מעבד ומעשיר נתונים (זה לוקח רגע)..."):
             try:
-                score, data = cached_analysis(uploaded_file.getvalue(), uploaded_file.name)
-
-                # אם ה-Gatekeeper מיצה את כל ה-Retry-ים מול Mouser, נחשוף זאת למשתמש במפורש
-                # במקום להציג בשקט טבלה עם נתוני N/A/❓ בלבד.
-                if any(c.get("manufacturer") == NETWORK_ERROR_STATUS for c in data):
-                    st.warning(
-                        "⚠️ שגיאת רשת בפנייה ל-Mouser API (לאחר מספר ניסיונות חוזרים). "
-                        "מוצגים נתוני ברירת מחדל עבור חלק מהרכיבים - נסו שוב מאוחר יותר."
-                    )
-
-                st.metric("ציון בריאות", f"{score} / 5.0")
-
-                df = pd.DataFrame(build_rows(data))
-
-                # רינדור הטבלה כ-HTML
-                # נשתמש ב-DataFrame.style כדי להחיל עיצוב
-                html_table = df.style.map(
-                    lambda val: 'background-color: #FFCCCC' if val == 1 else (
-                        'background-color: #FFFFCC' if val in [2, 3] else 'background-color: #CCFFCC'),
-                    subset=['ציון סיכון']
-                ).to_html(classes="risk-table", index=False)
-
-                st.markdown(html_table, unsafe_allow_html=True)
-
+                st.session_state["result"] = cached_analysis(uploaded_file.getvalue(), uploaded_file.name)
             except Exception as e:
+                st.session_state.pop("result", None)
                 st.error(f"שגיאה בתהליך: {e}. וודא שמפתחות ה-API תקינים ב-env.")
+
+    if "result" not in st.session_state:
+        return
+    score, data = st.session_state["result"]
+
+    # אם ה-Gatekeeper מיצה את כל ה-Retry-ים מול Mouser, נחשוף זאת למשתמש במפורש
+    # במקום להציג בשקט טבלה עם נתוני N/A/❓ בלבד.
+    if any(c.get("manufacturer") == NETWORK_ERROR_STATUS for c in data):
+        st.warning(
+            "⚠️ שגיאת רשת בפנייה ל-Mouser API (לאחר מספר ניסיונות חוזרים). "
+            "מוצגים נתוני ברירת מחדל עבור חלק מהרכיבים - נסו שוב מאוחר יותר."
+        )
+
+    df = pd.DataFrame(build_rows(data))
+    # utf-8-sig מוסיף BOM כך ש-Excel יזהה נכון קידוד עברי בפתיחת קובץ ה-CSV
+    col_download.download_button(
+        "הורד דוח", data=df.to_csv(index=False).encode("utf-8-sig"),
+        file_name="shalomci_report.csv", mime="text/csv"
+    )
+    st.metric("ציון בריאות", f"{score} / 5.0")
+    render_table(df)
 
 
 if __name__ == "__main__":
