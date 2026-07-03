@@ -1,4 +1,4 @@
-import streamlit.components.v1 as components
+import streamlit as st
 
 # מזהה ה-<script> שמוזרק ל-head העליון - מונע הזרקה כפולה בכל rerun של Streamlit
 # (Streamlit מריץ מחדש את כל הסקריפט בכל אינטראקציה של המשתמש, כמו לחיצת כפתור או שינוי סינון).
@@ -10,10 +10,10 @@ def inject_accessibility_widget() -> None:
     """
     מזריק את תפריט הנגישות של Enable.co.il לחלון העליון (window.parent) של הדף.
 
-    Streamlit מרנדר components.html בתוך iframe מבודד (sandboxed) - סקריפט המוזרק דרך
-    st.markdown/components.html ישירות ירוץ בתוך ה-iframe בלבד ולא ישפיע על שאר האפליקציה.
-    לכן יוצרים כאן אלמנט <script> דרך JS ומוסיפים אותו במפורש ל-window.parent.document.head,
-    כדי שהתפריט יפעל ברמת הדף המלא ולא רק בתוך ה-iframe המבודד של הרכיב הזה.
+    Streamlit מרנדר st.iframe (כמו components.html שקדם לו) בתוך iframe מבודד (sandboxed) -
+    סקריפט המוזרק ישירות ירוץ בתוך ה-iframe בלבד ולא ישפיע על שאר האפליקציה. לכן יוצרים כאן
+    אלמנט <script> דרך JS ומוסיפים אותו במפורש ל-window.parent.document.head, כדי שהתפריט
+    יפעל ברמת הדף המלא ולא רק בתוך ה-iframe המבודד של הרכיב הזה.
     """
     snippet = f"""
     <script>
@@ -32,4 +32,9 @@ def inject_accessibility_widget() -> None:
     }})();
     </script>
     """
-    components.html(snippet, height=0, width=0)
+    # st.iframe מזהה אוטומטית שהקלט הוא מחרוזת HTML גולמית (לא URL/נתיב קובץ) ומטמיע אותה
+    # ב-iframe, בדיוק כמו components.html המיושן - כולל אותה בידוד sandbox, ולכן אותו טריק
+    # window.parent עדיין נדרש ועדיין עובד. height/width=0 נדחים על ידי Streamlit
+    # (StreamlitInvalidWidthError/HeightError דורשים int חיובי, "stretch" או "content") -
+    # 1x1 פיקסל הוא המינימום החוקי, ולמעשה בלתי נראה.
+    st.iframe(snippet, height=1, width=1)

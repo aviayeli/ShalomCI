@@ -5,12 +5,16 @@ from typing import Any, Dict
 import httpx
 
 from src.services.gatekeeper import ApiGatekeeper
-from src.shared.translations import format_inventory, format_lead_time, translate
+from src.shared.translations import format_inventory, format_lead_time
 
 logger = logging.getLogger(__name__)
 
 # שאילתת GraphQL יחידה המשמשת גם לנתוני מלאי/מחיר וגם לחלופות (similarParts) - שדה
 # התוצאה העליון "supSearch" תואם במתכוון למבנה שכבר מצופה על ידי CrossReferenceEngine.find_alternatives.
+# הערה: "lifecycleStatus" הוסר בכוונה - שדה זה לא קיים בפועל על הטיפוס SupPart בסכימת Nexar
+# (400 Bad Request: "The field 'lifecycleStatus' does not exist on the type 'SupPart'").
+# Mouser כבר משמש כמקור היחיד למחזור חיים/ציון סיכון, כך שהעמודה "מחזור חיים (Octopart)"
+# תמיד תציג "לא ידוע" - ראו OctopartClient.parse_extra_fields.
 _PART_QUERY = """
 query PartSearch($mpn: String!) {
   supSearch(q: $mpn, limit: 1) {
@@ -18,7 +22,6 @@ query PartSearch($mpn: String!) {
       part {
         mpn
         manufacturer { name }
-        lifecycleStatus
         similarParts { mpn manufacturer { name } }
         sellers {
           company { name }
@@ -35,8 +38,8 @@ class OctopartClient:
     """
     קליינט אינטגרציה רשמי מול Octopart/Nexar Supply GraphQL API.
     מאמת מול Nexar Identity Server (OAuth2 Client Credentials), ומנותב לחלוטין דרך שומר הסף.
-    משמש הן לשליפת נתוני רכיב משלימים (מחזור חיים/מלאי/זמן אספקה/מחיר) והן לחיפוש
-    חלופות FFF (similarParts) עבור CrossReferenceEngine.find_alternatives.
+    משמש הן לשליפת נתוני רכיב משלימים (מלאי/זמן אספקה/מחיר - ראו הערה לגבי מחזור חיים
+    ב-_PART_QUERY) והן לחיפוש חלופות FFF (similarParts) עבור CrossReferenceEngine.find_alternatives.
     """
     TOKEN_URL = "https://identity.nexar.com/connect/token"
     GRAPHQL_URL = "https://api.nexar.com/graphql"
@@ -109,11 +112,11 @@ class OctopartClient:
 
     @classmethod
     def parse_extra_fields(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """מחלץ ומתרגם שדות מורחבים ממבנה תגובת ה-GraphQL של Octopart (מחזור חיים,
-        מלאי וזמן אספקה מהמוכר הראשון עם הצעה, ומחיר יחידה) לתצוגה בעברית לצד Mouser/DigiKey."""
+        """מחלץ ומתרגם שדות מורחבים ממבנה תגובת ה-GraphQL של Octopart (מלאי וזמן אספקה
+        מהמוכר הראשון עם הצעה, ומחיר יחידה) לתצוגה בעברית לצד Mouser/DigiKey. מחזור חיים
+        אינו נשלף מ-Octopart (ראו הערה ב-_PART_QUERY) - Mouser הוא המקור היחיד לכך."""
         results = ((payload.get("data") or {}).get("supSearch") or {}).get("results") or []
         part = (results[0].get("part") or {}) if results else {}
-        lifecycle = part.get("lifecycleStatus")
 
         offer = next(
             (o for seller in (part.get("sellers") or []) for o in (seller.get("offers") or [])), None
@@ -126,7 +129,7 @@ class OctopartClient:
             unit_price = prices[0].get("price")
 
         return {
-            "octopart_lifecycle": translate(lifecycle) if lifecycle else "לא ידוע",
+            "octopart_lifecycle": "לא ידוע",
             "octopart_inventory": (
                 format_inventory(cls.VENDOR_NAME, f"{quantity:,}") if quantity is not None
                 else f"{cls.VENDOR_NAME}: לא ידוע"

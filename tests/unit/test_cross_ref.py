@@ -214,11 +214,11 @@ async def test_get_octopart_data_no_client_returns_defaults():
 
 @pytest.mark.asyncio
 async def test_get_octopart_data_merges_parsed_fields():
-    """מוודא שכאשר קליינט Octopart מחובר, השדות מחולצים דרך OctopartClient.parse_extra_fields."""
+    """מוודא שכאשר קליינט Octopart מחובר, השדות מחולצים דרך OctopartClient.parse_extra_fields.
+    lifecycleStatus אינו נשלף מ-Octopart בכוונה (אינו קיים על SupPart בפועל) - תמיד 'לא ידוע'."""
     mock_client = AsyncMock()
     mock_client.search_part.return_value = {
         "data": {"supSearch": {"results": [{"part": {
-            "lifecycleStatus": "Active",
             "sellers": [{"offers": [{"inventoryLevel": 500, "factoryLeadDays": 5, "prices": [{"price": 0.3, "quantity": 1}]}]}],
         }}]}}
     }
@@ -226,7 +226,7 @@ async def test_get_octopart_data_merges_parsed_fields():
     engine = CrossReferenceEngine(octopart_client=mock_client)
     data = await engine.get_octopart_data("NE555")
 
-    assert data["octopart_lifecycle"] == "פעיל"
+    assert data["octopart_lifecycle"] == "לא ידוע"
     assert data["octopart_inventory"] == "Octopart: 500"
     assert data["octopart_price_per_unit"] == "$0.30"
     mock_client.search_part.assert_awaited_once_with("NE555")

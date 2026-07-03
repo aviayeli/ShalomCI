@@ -293,14 +293,15 @@ async def test_octopart_search_part_logs_response_body_and_reraises_on_400(gatek
 
 
 def test_octopart_parse_extra_fields_extracts_and_translates_full_result():
-    """בדיקה שהחילוץ מתוך מבנה תגובת GraphQL מלא של Octopart מתרגם ומעצב את כל השדות."""
+    """בדיקה שהחילוץ מתוך מבנה תגובת GraphQL מלא של Octopart מתרגם ומעצב את כל השדות.
+    lifecycleStatus אינו נשלף מ-Octopart בכוונה (אינו קיים על SupPart בסכימת Nexar בפועל -
+    ראו _PART_QUERY) - Mouser הוא המקור היחיד למחזור חיים, לכן העמודה תמיד "לא ידוע"."""
     payload = {
         "data": {
             "supSearch": {
                 "results": [{
                     "part": {
                         "mpn": "NE555",
-                        "lifecycleStatus": "Active",
                         "sellers": [{
                             "company": {"name": "Newark"},
                             "offers": [{
@@ -320,7 +321,7 @@ def test_octopart_parse_extra_fields_extracts_and_translates_full_result():
 
     extra = OctopartClient.parse_extra_fields(payload)
 
-    assert extra["octopart_lifecycle"] == "פעיל"
+    assert extra["octopart_lifecycle"] == "לא ידוע"
     assert extra["octopart_inventory"] == "Octopart: 3,400"
     assert extra["octopart_lead_time"] == "זמן אספקה: 12 ימים"
     assert extra["octopart_price_per_unit"] == "$0.95"
@@ -330,7 +331,6 @@ def test_octopart_parse_extra_fields_falls_back_to_first_price_tier_without_quan
     """אם אין מדרגת מחיר לכמות 1 בודדת, יש ליפול חזרה למדרגת המחיר הראשונה שקיימת."""
     payload = {
         "data": {"supSearch": {"results": [{"part": {
-            "lifecycleStatus": "Active",
             "sellers": [{"offers": [{
                 "inventoryLevel": 10,
                 "prices": [{"price": 2.5, "quantity": 100}, {"price": 2.2, "quantity": 500}],
