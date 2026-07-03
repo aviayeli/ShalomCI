@@ -2,6 +2,8 @@ import re
 
 import pandas as pd
 
+from src.gui.table_rows import MPN_COLUMN
+
 # עמודות מפורמטות כטקסט (למשל "זמן אספקה: 63 ימים") שדורשות שליפת מספר למיון נכון - עמודות
 # המחיר/מלאי כבר מספריות (float, ראו table_rows.py) וממוינות נכון באופן טבעי ללא צורך בכך.
 _NUMERIC_TEXT_COLUMNS = {"זמן אספקה"}
@@ -37,7 +39,7 @@ def filter_and_sort(df: pd.DataFrame, search: str, statuses: list, sort_by: str,
     if search:
         query = search.strip()
         mask = (
-            result["מק\"ט"].astype(str).str.contains(query, case=False, na=False)
+            result[MPN_COLUMN].astype(str).str.contains(query, case=False, na=False)
             | result["יצרן"].astype(str).str.contains(query, case=False, na=False)
         )
         result = result[mask]

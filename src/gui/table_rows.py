@@ -6,6 +6,7 @@ STATUS_ICONS = {1: "⛔", 2: "⚠️", 3: "⚠️", 4: "✅", 5: "✅"}
 PRICE_STOCK_VENDORS = {"Mouser": "mouser", "DigiKey": "digikey", "Octopart": "octopart"}
 PRICE_COLUMN_PREFIX = "מחיר (₪) - "
 STOCK_COLUMN_PREFIX = "מלאי זמין - "
+MPN_COLUMN = "מק\"ט"
 
 
 def status_icon(risk_score: int) -> str:
@@ -48,7 +49,7 @@ def build_rows(components: list) -> list:
         score = c.get("risk_score", 0)
         rows.append({
             "ספק מומלץ": recommended_vendor(c),
-            "מק\"ט": c.get("mpn", "N/A"),
+            MPN_COLUMN: c.get("mpn", "N/A"),
             "יצרן": c.get("manufacturer", "N/A"),
             "סטטוס": f"{status_icon(score)} {c.get('lifecycle_status', 'N/A')}",
             "ציון סיכון": score,

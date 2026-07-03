@@ -26,19 +26,28 @@ RISK_SCORE_HELP = (
     "stock availability, and lead times across all components."
 )
 
-# CSS גלובלי: RTL, טיפוגרפיה ורקע. מאז המעבר ל-st.dataframe הטבעי (table_render.py) הטבלה
-# מרונדרת ב-DOM הראשי (לא ב-iframe מבודד) - כך שה-CSS הזה משפיע גם על מכולות הטבלה, אם כי
-# תוכן הפנימי של הרשת (glide-data-grid) מצויר על canvas ולכן לא ניתן לעצב תא-תא באמצעות CSS.
+# CSS גלובלי: RTL לוגי (start/end, לא right/left קשיח), טיפוגרפיה נגישה מותאמת עברית, ורקע.
+# הטבלה עצמה (table_render.py, pandas.Styler -> st.html) מרונדרת ב-DOM הראשי, לכן ה-CSS
+# הזה משפיע עליה גם כן - אך ל-Styler יש CSS ממוקד משלו (scoped לתחילית ה-id הייחודי שלו,
+# עם !important) שגובר על הכללים הגלובליים כאן היכן שהם מתנגשים (למשל יישור עמודות מספריות).
 RTL_CSS = """
 <style>
     * {
         direction: rtl !important;
-        text-align: right !important;
-        font-family: 'Segoe UI', Arial, sans-serif !important;
-        font-size: 1.05rem;
+        text-align: start !important;
+        font-family: 'Assistant', 'Heebo', 'Noto Sans Hebrew', 'Segoe UI', sans-serif !important;
+        font-size: 1rem;
+        line-height: 1.5;
         font-style: normal !important;
+        letter-spacing: normal !important;
     }
     .stApp { background-color: #F8F9FA; }
+    /* מטרות מגע נגישות (WCAG) - מילים בעברית ("הורד" לעומת "Download") מקצרות כפתורים
+       בברירת המחדל של Streamlit עד כדי חוסר שימושיות במגע; גובה/ריפוד מינימליים מתקנים זאת. */
+    button {
+        min-height: 48px !important;
+        padding-inline: 32px !important;
+    }
 </style>
 """
 
