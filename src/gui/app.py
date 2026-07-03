@@ -15,21 +15,14 @@ if project_root not in sys.path:
 from src.core.cross_ref import NETWORK_ERROR_STATUS
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_render import render_table
+from src.gui.table_rows import build_rows
 from src.sdk import ShalomCI_SDK
-
-# אייקוני נגישות (WCAG 2.2) - ההתראה על סטטוס לא מסתמכת על צבע בלבד; אותם ספים כמו צביעת התאים.
-STATUS_ICONS = {1: "⛔", 2: "⚠️", 3: "⚠️", 4: "✅", 5: "✅"}
 
 RISK_SCORE_HELP = (
     "This score represents the overall supply chain and obsolescence risk of the BOM. "
     "It is calculated by factoring in the Lifecycle Status (e.g., EOL, NRND), current "
     "stock availability, and lead times across all components."
 )
-
-
-def status_icon(risk_score: int) -> str:
-    """מחזיר אייקון נגישות התואם לרמת הסיכון; ציון לא ידוע (0) מסומן לבדיקה ידנית."""
-    return STATUS_ICONS.get(risk_score, "❓")
 
 # CSS גלובלי (RTL ורקע בלבד) - עיצוב הטבלה עבר ל-iframe מבודד ב-render_table, ראו שם למה.
 RTL_CSS = """
@@ -38,32 +31,6 @@ RTL_CSS = """
     .stApp { background-color: #F8F9FA; }
 </style>
 """
-
-
-def build_rows(components: list) -> list:
-    """בונה את שורות טבלת התצוגה מתוך נתוני הרכיבים המועשרים (פונקציה טהורה, ניתנת לבדיקה)."""
-    rows = []
-    for c in components:
-        score = c.get("risk_score", 0)
-        rows.append({
-            "מק\"ט": c.get("mpn", "N/A"),
-            "יצרן": c.get("manufacturer", "N/A"),
-            "סטטוס": f"{status_icon(score)} {c.get('lifecycle_status', 'N/A')}",
-            "ציון סיכון": score,
-            "מלאי": c.get("inventory", "לא ידוע"),
-            "זמן אספקה": c.get("lead_time", "זמן אספקה: לא ידוע"),
-            "מחיר ליחידה": c.get("price_per_unit", "לא זמין"),
-            "חלופה מוצעת (Mouser)": c.get("suggested_replacement", "אין"),
-            "תאימות RoHS": c.get("rohs_status", "לא ידוע"),
-            "צורת אריזה": c.get("packaging", "לא ידוע"),
-            "מחזור חיים (DigiKey)": c.get("digikey_lifecycle", "לא ידוע"),
-            "מלאי (DigiKey)": c.get("digikey_inventory", "DigiKey: לא ידוע"),
-            "זמן אספקה (DigiKey)": c.get("digikey_lead_time", "זמן אספקה: לא ידוע"),
-            "מחיר ליחידה (DigiKey)": c.get("digikey_price_per_unit", "לא זמין"),
-            "חלופות": ", ".join([a.get("mpn", "") for a in c.get("alternatives", [])]) if c.get(
-                "alternatives") else "אין"
-        })
-    return rows
 
 
 async def run_analysis(file_path: str, filename: str):
@@ -95,7 +62,7 @@ def cached_analysis(file_bytes: bytes, filename: str):  # pragma: no cover - ח�
             os.remove(tmp_path)
 
 
-def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלוגיקה הטהורה נבדקת ב-status_icon/build_rows/run_analysis
+def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלוגיקה הטהורה נבדקת ב-table_rows/run_analysis
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
     st.title("⚙️ ShalomCI - אינטליגנציית רכיבים")

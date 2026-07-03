@@ -5,6 +5,7 @@ import pytest
 from src.sdk import ShalomCI_SDK
 from src.services.digikey_api import DigiKeyClient
 from src.services.mouser_api import MouserClient
+from src.services.octopart_api import OctopartClient
 
 
 @pytest.fixture
@@ -12,6 +13,8 @@ async def sdk(tmp_path, monkeypatch):
     monkeypatch.delenv("MOUSER_API_KEY", raising=False)
     monkeypatch.delenv("DIGIKEY_CLIENT_ID", raising=False)
     monkeypatch.delenv("DIGIKEY_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("OCTOPART_CLIENT_ID", raising=False)
+    monkeypatch.delenv("OCTOPART_CLIENT_SECRET", raising=False)
     db_file = tmp_path / "test_cases.db"
     instance = ShalomCI_SDK(db_path=str(db_file))
     yield instance
@@ -159,3 +162,56 @@ async def test_enrich_components_merges_digikey_fields_alongside_mouser(sdk):
     assert components[0]["digikey_inventory"] == "DigiKey: 500"
     assert components[0]["digikey_price_per_unit"] == "$0.42"
     sdk.cross_ref.get_digikey_data.assert_awaited_once_with("NE555")
+
+
+def test_sdk_has_no_octopart_client_without_env_keys(sdk):
+    """ללא OCTOPART_CLIENT_ID/SECRET בסביבה, ה-SDK לא אמור להקים קליינט Octopart (fallback לברירות מחדל)."""
+    assert sdk.cross_ref.octopart_client is None
+
+
+async def test_sdk_builds_octopart_client_from_env_keys(tmp_path, monkeypatch):
+    """כאשר OCTOPART_CLIENT_ID/SECRET מוגדרים בסביבה, ה-SDK אמור להקים OctopartClient דרך ה-Gatekeeper אוטומטית."""
+    monkeypatch.setenv("OCTOPART_CLIENT_ID", "fake_id_from_env")
+    monkeypatch.setenv("OCTOPART_CLIENT_SECRET", "fake_secret_from_env")
+    db_file = tmp_path / "test_cases.db"
+
+    instance = ShalomCI_SDK(db_path=str(db_file))
+    try:
+        assert isinstance(instance.cross_ref.octopart_client, OctopartClient)
+        assert instance.cross_ref.octopart_client.client_id == "fake_id_from_env"
+        assert instance.cross_ref.octopart_client.gatekeeper is instance.gatekeeper
+    finally:
+        await instance.close()
+
+
+async def test_sdk_explicit_octopart_client_overrides_env(tmp_path, monkeypatch):
+    """אם מוזרק octopart_client ידנית, הוא גובר על בניית ברירת המחדל מהסביבה."""
+    monkeypatch.setenv("OCTOPART_CLIENT_ID", "fake_id_from_env")
+    monkeypatch.setenv("OCTOPART_CLIENT_SECRET", "fake_secret_from_env")
+    db_file = tmp_path / "test_cases.db"
+    injected_client = AsyncMock()
+
+    instance = ShalomCI_SDK(db_path=str(db_file), octopart_client=injected_client)
+    try:
+        assert instance.cross_ref.octopart_client is injected_client
+    finally:
+        await instance.close()
+
+
+async def test_enrich_components_merges_octopart_fields_alongside_others(sdk):
+    """מוודא ש-enrich_components ממזג גם את שדות ה-Octopart (side-by-side) לצד Mouser/DigiKey."""
+    await sdk.initialize()
+    sdk.cross_ref.get_octopart_data = AsyncMock(return_value={
+        "octopart_lifecycle": "פעיל",
+        "octopart_inventory": "Octopart: 900",
+        "octopart_lead_time": "זמן אספקה: 12 ימים",
+        "octopart_price_per_unit": "$0.77",
+    })
+    components = [{"mpn": "NE555"}]
+
+    await sdk.enrich_components(components)
+
+    assert components[0]["octopart_lifecycle"] == "פעיל"
+    assert components[0]["octopart_inventory"] == "Octopart: 900"
+    assert components[0]["octopart_price_per_unit"] == "$0.77"
+    sdk.cross_ref.get_octopart_data.assert_awaited_once_with("NE555")

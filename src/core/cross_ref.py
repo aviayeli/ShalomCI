@@ -4,32 +4,41 @@ import httpx
 
 from src.services.digikey_api import DigiKeyClient
 from src.services.mouser_api import MouserClient
+from src.services.octopart_api import OctopartClient
 
 # מסמן סטטוס ייעודי לשגיאת רשת אמיתית (ה-Gatekeeper מיצה את כל ניסיונות ה-Retry),
 # בניגוד ל"Unknown"/"Error" עסקיים רגילים - כדי שממשק המשתמש (GUI) יוכל להבחין בין
 # "לא מצאנו את הרכיב" לבין "לא הצלחנו בכלל להגיע ל-Mouser" ולהציג התראה מפורשת על כך.
 NETWORK_ERROR_STATUS = "Network Error"
 
-# ברירות מחדל בעברית לנתוני DigiKey - מוצגים לצד Mouser (side-by-side), אינם משפיעים
-# על risk_score המרכזי שממשיך להיות מחושב אך ורק מנתוני Mouser/lifecycle_status.
+# ברירות מחדל בעברית לנתוני DigiKey/Octopart - מוצגים לצד Mouser (side-by-side), אינם
+# משפיעים על risk_score המרכזי שממשיך להיות מחושב אך ורק מנתוני Mouser/lifecycle_status.
 DIGIKEY_FIELD_DEFAULTS = {
     "digikey_lifecycle": "לא ידוע",
     "digikey_inventory": "DigiKey: לא ידוע",
     "digikey_lead_time": "זמן אספקה: לא ידוע",
     "digikey_price_per_unit": "לא זמין",
 }
+OCTOPART_FIELD_DEFAULTS = {
+    "octopart_lifecycle": "לא ידוע",
+    "octopart_inventory": "Octopart: לא ידוע",
+    "octopart_lead_time": "זמן אספקה: לא ידוע",
+    "octopart_price_per_unit": "לא זמין",
+}
 
 
 class CrossReferenceEngine:
     """
     מנוע לאיתור חלופות (FFF - Form, Fit, Function) ונתוני רכיבים.
-    פועל באמצעות קליינט חיצוני (כגון Octopart/Nexar) המנותב דרך Gatekeeper, וכן
-    (אופציונלית) קליינט DigiKey נפרד להעשרה משלימה של אותו רכיב.
+    פועל באמצעות קליינט ראשי (Mouser) המנותב דרך Gatekeeper, וכן (אופציונלית) קליינטי
+    DigiKey ו-Octopart נפרדים להעשרה משלימה של אותו רכיב side-by-side. חיפוש חלופות FFF
+    (find_alternatives) מעדיף את קליינט Octopart, שהוא ספק הקרוס-רפרנס הטבעי.
     """
 
-    def __init__(self, api_client=None, digikey_client: DigiKeyClient = None):
+    def __init__(self, api_client=None, digikey_client: DigiKeyClient = None, octopart_client: OctopartClient = None):
         self.api_client = api_client
         self.digikey_client = digikey_client
+        self.octopart_client = octopart_client
 
     async def get_part_data(self, mpn: str) -> Dict[str, Any]:
         """
@@ -94,16 +103,38 @@ class CrossReferenceEngine:
             print(f"DEBUG: שגיאה בשליפת נתוני DigiKey עבור {mpn}: {e}")
             return dict(DIGIKEY_FIELD_DEFAULTS)
 
+    async def get_octopart_data(self, mpn: str) -> Dict[str, Any]:
+        """
+        שליפת נתוני Octopart משלימים (מחזור חיים, מלאי, זמן אספקה, מחיר) המוצגים לצד
+        Mouser/DigiKey ב-GUI. תמיד מנותב דרך ה-Gatekeeper (via OctopartClient). אינה
+        משפיעה על risk_score המרכזי - כשל/העדר קליינט מחזירים ברירות מחדל בעברית, לא זורקים.
+        """
+        if not self.octopart_client:
+            return dict(OCTOPART_FIELD_DEFAULTS)
+
+        try:
+            payload = await self.octopart_client.search_part(mpn)
+            return OctopartClient.parse_extra_fields(payload)
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            print(f"DEBUG: שגיאת רשת בשליפת נתוני Octopart עבור {mpn}: {e}")
+            return dict(OCTOPART_FIELD_DEFAULTS)
+        except Exception as e:
+            print(f"DEBUG: שגיאה בשליפת נתוני Octopart עבור {mpn}: {e}")
+            return dict(OCTOPART_FIELD_DEFAULTS)
+
     async def find_alternatives(self, mpn: str) -> List[Dict[str, Any]]:
         """
         מחפש חלופות (FFF) לרכיב מסוים.
-        זמין אך ורק דרך ספקים התומכים בקרוס-רפרנס (למשל Octopart); Mouser אינו תומך בכך כיום.
+        מעדיף את קליינט ה-Octopart (ספק הקרוס-רפרנס הטבעי); נופל בחזרה ל-api_client הראשי
+        רק אם הוא עצמו תומך בקרוס-רפרנס (לצורכי בדיקות/הזרקה ידנית). Mouser/DigiKey הרגילים
+        אינם תומכים בכך.
         """
-        if not self.api_client or not hasattr(self.api_client, "search_cross_reference"):
+        client = self.octopart_client or self.api_client
+        if not client or not hasattr(client, "search_cross_reference"):
             return []
 
         try:
-            result = await self.api_client.search_cross_reference(mpn)
+            result = await client.search_cross_reference(mpn)
 
             # חילוץ בטוח מתוך מבנה GraphQL
             parts = result.get("data", {}).get("supSearch", {}).get("results", [])

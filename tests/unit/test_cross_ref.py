@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 
-from src.core.cross_ref import DIGIKEY_FIELD_DEFAULTS, NETWORK_ERROR_STATUS, CrossReferenceEngine
+from src.core.cross_ref import (
+    DIGIKEY_FIELD_DEFAULTS,
+    NETWORK_ERROR_STATUS,
+    OCTOPART_FIELD_DEFAULTS,
+    CrossReferenceEngine,
+)
 from src.services.gatekeeper import ApiGatekeeper
 from src.services.mouser_api import MouserClient
 
@@ -195,3 +200,74 @@ async def test_get_digikey_data_generic_error_returns_defaults():
     data = await engine.get_digikey_data("NE555")
 
     assert data == DIGIKEY_FIELD_DEFAULTS
+
+
+@pytest.mark.asyncio
+async def test_get_octopart_data_no_client_returns_defaults():
+    """ללא קליינט Octopart מחובר, מוחזרות ברירות המחדל בעברית ולא נזרקת שגיאה."""
+    engine = CrossReferenceEngine(octopart_client=None)
+
+    data = await engine.get_octopart_data("NE555")
+
+    assert data == OCTOPART_FIELD_DEFAULTS
+
+
+@pytest.mark.asyncio
+async def test_get_octopart_data_merges_parsed_fields():
+    """מוודא שכאשר קליינט Octopart מחובר, השדות מחולצים דרך OctopartClient.parse_extra_fields."""
+    mock_client = AsyncMock()
+    mock_client.search_part.return_value = {
+        "data": {"supSearch": {"results": [{"part": {
+            "lifecycleStatus": "Active",
+            "sellers": [{"offers": [{"inventoryLevel": 500, "factoryLeadDays": 5, "prices": [{"price": 0.3, "quantity": 1}]}]}],
+        }}]}}
+    }
+
+    engine = CrossReferenceEngine(octopart_client=mock_client)
+    data = await engine.get_octopart_data("NE555")
+
+    assert data["octopart_lifecycle"] == "פעיל"
+    assert data["octopart_inventory"] == "Octopart: 500"
+    assert data["octopart_price_per_unit"] == "$0.30"
+    mock_client.search_part.assert_awaited_once_with("NE555")
+
+
+@pytest.mark.asyncio
+async def test_get_octopart_data_network_error_returns_defaults():
+    """מוודא שכשל רשת מול Octopart (לאחר Retries של ה-Gatekeeper) חוזר לברירות מחדל ולא קורס."""
+    mock_client = AsyncMock()
+    mock_client.search_part.side_effect = httpx.ConnectError("Connection refused")
+
+    engine = CrossReferenceEngine(octopart_client=mock_client)
+    data = await engine.get_octopart_data("NE555")
+
+    assert data == OCTOPART_FIELD_DEFAULTS
+
+
+@pytest.mark.asyncio
+async def test_get_octopart_data_generic_error_returns_defaults():
+    """מוודא ששגיאה כללית בלתי צפויה מ-Octopart חוזרת לברירות מחדל ולא קורסת."""
+    mock_client = AsyncMock()
+    mock_client.search_part.side_effect = RuntimeError("boom")
+
+    engine = CrossReferenceEngine(octopart_client=mock_client)
+    data = await engine.get_octopart_data("NE555")
+
+    assert data == OCTOPART_FIELD_DEFAULTS
+
+
+@pytest.mark.asyncio
+async def test_find_alternatives_prefers_octopart_client_over_api_client():
+    """מוודא ש-find_alternatives פונה לקליינט Octopart הייעודי, ולא ל-api_client הראשי (Mouser), כשקיימים שניהם."""
+    mouser_like_client = AsyncMock()
+    octopart_client = AsyncMock()
+    octopart_client.search_cross_reference.return_value = {
+        "data": {"supSearch": {"results": [{"part": {"similarParts": [{"mpn": "OCTOPART_ALT"}]}}]}}
+    }
+
+    engine = CrossReferenceEngine(api_client=mouser_like_client, octopart_client=octopart_client)
+    alts = await engine.find_alternatives("NE555")
+
+    assert alts == [{"mpn": "OCTOPART_ALT"}]
+    octopart_client.search_cross_reference.assert_awaited_once_with("NE555")
+    mouser_like_client.search_cross_reference.assert_not_called()

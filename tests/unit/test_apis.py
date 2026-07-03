@@ -6,6 +6,7 @@ import pytest
 from src.services.digikey_api import DigiKeyClient
 from src.services.gatekeeper import ApiGatekeeper
 from src.services.mouser_api import MouserClient
+from src.services.octopart_api import OctopartClient
 
 
 @pytest.fixture
@@ -179,3 +180,109 @@ def test_digikey_parse_extra_fields_defaults_for_missing_data():
     assert extra["digikey_inventory"] == "DigiKey: לא ידוע"
     assert extra["digikey_lead_time"] == "זמן אספקה: לא ידוע"
     assert extra["digikey_price_per_unit"] == "לא זמין"
+
+
+def test_octopart_client_missing_credentials(gatekeeper):
+    """מוודא חסימה בהקמת קליינט Octopart ללא Client ID/Secret."""
+    with pytest.raises(ValueError, match="Octopart client ID and secret are required"):
+        OctopartClient(client_id="", client_secret="secret", gatekeeper=gatekeeper)
+    with pytest.raises(ValueError, match="Octopart client ID and secret are required"):
+        OctopartClient(client_id="id", client_secret="", gatekeeper=gatekeeper)
+
+
+async def test_octopart_client_fetches_and_caches_access_token(gatekeeper, monkeypatch):
+    """מוודא שהטוקן נשלף פעם אחת מ-OAuth2 Client Credentials מול Nexar וממוחזר בקריאה השנייה."""
+    client = OctopartClient(client_id="fake_id", client_secret="fake_secret", gatekeeper=gatekeeper)
+
+    token_response = MockResponse({"access_token": "abc123", "expires_in": 3600})
+    graphql_response = MockResponse({"data": {"supSearch": {"results": []}}})
+    mock_request = AsyncMock(side_effect=[token_response, graphql_response, graphql_response])
+    monkeypatch.setattr(gatekeeper.client, "request", mock_request)
+
+    await client.search_part("NE555")
+    await client.search_part("NE555")
+
+    # קריאה אחת בלבד לטוקן (POST) ושתי קריאות GraphQL - הטוקן ממוחזר
+    assert mock_request.call_count == 3
+    token_call_args, _ = mock_request.call_args_list[0]
+    assert token_call_args[0] == "POST"
+    assert token_call_args[1] == OctopartClient.TOKEN_URL
+    graphql_call_args, graphql_call_kwargs = mock_request.call_args_list[1]
+    assert graphql_call_args[1] == OctopartClient.GRAPHQL_URL
+    assert graphql_call_kwargs["headers"]["Authorization"] == "Bearer abc123"
+    assert "NE555" in graphql_call_kwargs["json"]["variables"]["mpn"]
+
+
+async def test_octopart_search_cross_reference_is_same_query_as_search_part(gatekeeper, monkeypatch):
+    """מוודא ש-search_cross_reference (המשמש ל-FFF) משתמש באותה שאילתה בדיוק כמו search_part."""
+    client = OctopartClient(client_id="fake_id", client_secret="fake_secret", gatekeeper=gatekeeper)
+
+    token_response = MockResponse({"access_token": "abc123", "expires_in": 3600})
+    graphql_response = MockResponse({"data": {"supSearch": {"results": []}}})
+    mock_request = AsyncMock(side_effect=[token_response, graphql_response])
+    monkeypatch.setattr(gatekeeper.client, "request", mock_request)
+
+    result = await client.search_cross_reference("NE555")
+
+    assert result == {"data": {"supSearch": {"results": []}}}
+
+
+def test_octopart_parse_extra_fields_extracts_and_translates_full_result():
+    """בדיקה שהחילוץ מתוך מבנה תגובת GraphQL מלא של Octopart מתרגם ומעצב את כל השדות."""
+    payload = {
+        "data": {
+            "supSearch": {
+                "results": [{
+                    "part": {
+                        "mpn": "NE555",
+                        "lifecycleStatus": "Active",
+                        "sellers": [{
+                            "company": {"name": "Newark"},
+                            "offers": [{
+                                "inventoryLevel": 3400,
+                                "factoryLeadDays": 12,
+                                "prices": [
+                                    {"price": 1.10, "currency": "USD", "quantity": 10},
+                                    {"price": 0.95, "currency": "USD", "quantity": 1},
+                                ],
+                            }],
+                        }],
+                    }
+                }]
+            }
+        }
+    }
+
+    extra = OctopartClient.parse_extra_fields(payload)
+
+    assert extra["octopart_lifecycle"] == "פעיל"
+    assert extra["octopart_inventory"] == "Octopart: 3,400"
+    assert extra["octopart_lead_time"] == "זמן אספקה: 12 ימים"
+    assert extra["octopart_price_per_unit"] == "$0.95"
+
+
+def test_octopart_parse_extra_fields_falls_back_to_first_price_tier_without_quantity_one():
+    """אם אין מדרגת מחיר לכמות 1 בודדת, יש ליפול חזרה למדרגת המחיר הראשונה שקיימת."""
+    payload = {
+        "data": {"supSearch": {"results": [{"part": {
+            "lifecycleStatus": "Active",
+            "sellers": [{"offers": [{
+                "inventoryLevel": 10,
+                "prices": [{"price": 2.5, "quantity": 100}, {"price": 2.2, "quantity": 500}],
+            }]}],
+        }}]}}
+    }
+
+    extra = OctopartClient.parse_extra_fields(payload)
+
+    assert extra["octopart_price_per_unit"] == "$2.50"
+
+
+def test_octopart_parse_extra_fields_defaults_for_missing_data():
+    """מוודא שתגובת Octopart ריקה (למשל מק"ט לא נמצא) מקבלת ברירות מחדל בעברית ולא קורסת."""
+    extra = OctopartClient.parse_extra_fields({"data": {"supSearch": {"results": []}}})
+
+    assert extra["octopart_lifecycle"] == "לא ידוע"
+    assert extra["octopart_inventory"] == "Octopart: לא ידוע"
+    assert extra["octopart_lead_time"] == "זמן אספקה: לא ידוע"
+    assert extra["octopart_price_per_unit"] == "לא זמין"

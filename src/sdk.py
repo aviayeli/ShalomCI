@@ -10,6 +10,7 @@ from src.data.case_manager import CaseManager
 from src.services.digikey_api import DigiKeyClient
 from src.services.gatekeeper import ApiGatekeeper
 from src.services.mouser_api import MouserClient
+from src.services.octopart_api import OctopartClient
 from src.shared.translations import translate
 
 load_dotenv()
@@ -29,7 +30,7 @@ EXTRA_FIELD_DEFAULTS = {
 class ShalomCI_SDK:
     """שכבת הגישה המרכזית (SDK) עבור מערכת ShalomCI."""
 
-    def __init__(self, db_path: str = "cases.db", api_client=None, digikey_client=None):
+    def __init__(self, db_path: str = "cases.db", api_client=None, digikey_client=None, octopart_client=None):
         self.case_manager = CaseManager(db_path)
         self.bom_parser = BomParser()
         self.risk_engine = RiskEngine()
@@ -37,6 +38,7 @@ class ShalomCI_SDK:
         self.cross_ref = CrossReferenceEngine(
             api_client or self._build_default_client(),
             digikey_client=digikey_client or self._build_digikey_client(),
+            octopart_client=octopart_client or self._build_octopart_client(),
         )
         self.reporter = ExcelReporter()
         self.is_initialized = False
@@ -55,6 +57,14 @@ class ShalomCI_SDK:
         if not client_id or not client_secret:
             return None
         return DigiKeyClient(client_id=client_id, client_secret=client_secret, gatekeeper=self.gatekeeper)
+
+    def _build_octopart_client(self):
+        """בונה קליינט Octopart/Nexar דרך ה-Gatekeeper אם OCTOPART_CLIENT_ID/SECRET מוגדרים בסביבה."""
+        client_id = os.getenv("OCTOPART_CLIENT_ID")
+        client_secret = os.getenv("OCTOPART_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            return None
+        return OctopartClient(client_id=client_id, client_secret=client_secret, gatekeeper=self.gatekeeper)
 
     async def initialize(self):
         await self.case_manager.init_db()
@@ -91,9 +101,10 @@ class ShalomCI_SDK:
             for field, default in EXTRA_FIELD_DEFAULTS.items():
                 comp[field] = (data or {}).get(field, default)
 
-            # נתוני DigiKey מוצגים side-by-side לצד Mouser - תמיד נשלפים בנפרד, גם אם
+            # נתוני DigiKey/Octopart מוצגים side-by-side לצד Mouser - תמיד נשלפים בנפרד, גם אם
             # ה-Mouser lookup נכשל, ולעולם אינם משפיעים על risk_score/lifecycle_status.
             comp.update(await self.cross_ref.get_digikey_data(mpn))
+            comp.update(await self.cross_ref.get_octopart_data(mpn))
         print("DEBUG: העשרה הסתיימה בהצלחה.")
 
     async def evaluate_risks(self, enriched_data: list) -> dict:
