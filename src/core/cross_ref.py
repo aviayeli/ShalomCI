@@ -84,43 +84,35 @@ class CrossReferenceEngine:
             print(f"DEBUG: שגיאה בשליפת נתוני רכיב {mpn}: {e}")
             return {"manufacturer": "Error", "lifecycle": "Error", "risk_score": 5}
 
-    async def get_digikey_data(self, mpn: str) -> Dict[str, Any]:
+    async def _get_secondary_vendor_data(self, client, parser, defaults: dict, vendor: str, mpn: str) -> Dict[str, Any]:
         """
-        שליפת נתוני DigiKey משלימים (מחזור חיים, מלאי, זמן אספקה, מחיר) המוצגים לצד
-        Mouser ב-GUI. תמיד מנותב דרך ה-Gatekeeper (via DigiKeyClient). אינה משפיעה על
-        risk_score המרכזי - כשל/העדר קליינט מחזירים ברירות מחדל בעברית, לא זורקים.
+        שליפה גנרית של נתוני ספק משני (DigiKey/Octopart) המוצגים side-by-side ב-GUI, תמיד
+        מנותבת דרך ה-Gatekeeper של הקליינט עצמו. אינה משפיעה על risk_score המרכזי - כשל/העדר
+        קליינט מחזירים ברירות מחדל בעברית, לא זורקים (זהה במבנה לשני הספקים - ראו get_digikey_data/get_octopart_data).
         """
-        if not self.digikey_client:
-            return dict(DIGIKEY_FIELD_DEFAULTS)
-
+        if not client:
+            return dict(defaults)
         try:
-            payload = await self.digikey_client.search_part(mpn)
-            return DigiKeyClient.parse_extra_fields(payload)
+            payload = await client.search_part(mpn)
+            return parser(payload)
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            print(f"DEBUG: שגיאת רשת בשליפת נתוני DigiKey עבור {mpn}: {e}")
-            return dict(DIGIKEY_FIELD_DEFAULTS)
+            print(f"DEBUG: שגיאת רשת בשליפת נתוני {vendor} עבור {mpn}: {e}")
+            return dict(defaults)
         except Exception as e:
-            print(f"DEBUG: שגיאה בשליפת נתוני DigiKey עבור {mpn}: {e}")
-            return dict(DIGIKEY_FIELD_DEFAULTS)
+            print(f"DEBUG: שגיאה בשליפת נתוני {vendor} עבור {mpn}: {e}")
+            return dict(defaults)
+
+    async def get_digikey_data(self, mpn: str) -> Dict[str, Any]:
+        """שליפת נתוני DigiKey משלימים (מחזור חיים, מלאי, זמן אספקה, מחיר)."""
+        return await self._get_secondary_vendor_data(
+            self.digikey_client, DigiKeyClient.parse_extra_fields, DIGIKEY_FIELD_DEFAULTS, "DigiKey", mpn
+        )
 
     async def get_octopart_data(self, mpn: str) -> Dict[str, Any]:
-        """
-        שליפת נתוני Octopart משלימים (מחזור חיים, מלאי, זמן אספקה, מחיר) המוצגים לצד
-        Mouser/DigiKey ב-GUI. תמיד מנותב דרך ה-Gatekeeper (via OctopartClient). אינה
-        משפיעה על risk_score המרכזי - כשל/העדר קליינט מחזירים ברירות מחדל בעברית, לא זורקים.
-        """
-        if not self.octopart_client:
-            return dict(OCTOPART_FIELD_DEFAULTS)
-
-        try:
-            payload = await self.octopart_client.search_part(mpn)
-            return OctopartClient.parse_extra_fields(payload)
-        except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            print(f"DEBUG: שגיאת רשת בשליפת נתוני Octopart עבור {mpn}: {e}")
-            return dict(OCTOPART_FIELD_DEFAULTS)
-        except Exception as e:
-            print(f"DEBUG: שגיאה בשליפת נתוני Octopart עבור {mpn}: {e}")
-            return dict(OCTOPART_FIELD_DEFAULTS)
+        """שליפת נתוני Octopart משלימים (מלאי, זמן אספקה, מחיר; מחזור חיים תמיד 'לא ידוע')."""
+        return await self._get_secondary_vendor_data(
+            self.octopart_client, OctopartClient.parse_extra_fields, OCTOPART_FIELD_DEFAULTS, "Octopart", mpn
+        )
 
     async def find_alternatives(self, mpn: str) -> List[Dict[str, Any]]:
         """
@@ -136,13 +128,18 @@ class CrossReferenceEngine:
         try:
             result = await client.search_cross_reference(mpn)
 
-            # חילוץ בטוח מתוך מבנה GraphQL
-            parts = result.get("data", {}).get("supSearch", {}).get("results", [])
+            # חילוץ בטוח מתוך מבנה GraphQL - Nexar עשוי להחזיר null (לא רק מפתח חסר) עבור
+            # data/supSearch/results/part/similarParts, ואף עבור איברים בודדים בתוך רשימה
+            # (למשל results: [null]) כשלרכיב מסוים חסר מידע. .get(key, default) לא מספיק
+            # כאן - הוא מגן רק על מפתח חסר, לא על ערך null מפורש - לכן "or {}"/"or []" בכל שלב.
+            sup_search = ((result or {}).get("data") or {}).get("supSearch") or {}
+            parts = sup_search.get("results") or []
             if not parts:
                 return []
 
-            similar_parts = parts[0].get("part", {}).get("similarParts", [])
-            return similar_parts
+            first_part = (parts[0] or {}).get("part") or {}
+            similar_parts = first_part.get("similarParts") or []
+            return [sp for sp in similar_parts if sp]
         except Exception as e:
             print(f"DEBUG: שגיאה באיתור חלופות עבור {mpn}: {e}")
             return []

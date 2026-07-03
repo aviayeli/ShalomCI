@@ -1,5 +1,5 @@
 import pandas as pd
-import streamlit.components.v1 as components
+import streamlit as st
 
 TABLE_CSS = """
 body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
@@ -11,8 +11,8 @@ body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
 
 
 def render_table(df: pd.DataFrame):  # pragma: no cover - חיווט Streamlit בלבד (Proxy)
-    # iframe מבודד (components.html) עוקף את סינון aria-/role של DOMPurify ב-st.markdown ואת
-    # התנגשות ה-CSS הגלובלי עם sticky header. format(escape="html") חובה: components.html מריץ
+    # iframe מבודד (st.iframe) עוקף את סינון aria-/role של DOMPurify ב-st.markdown ואת
+    # התנגשות ה-CSS הגלובלי עם sticky header. format(escape="html") חובה: ה-iframe מריץ
     # HTML/JS גולמי בלי sanitization, והערכים מגיעים מ-Mouser API/BOM שהועלה - מקורות לא מהימנים.
     html_table = df.style.hide(axis="index").format(escape="html").map(
         lambda val: 'background-color: #FFCCCC' if val == 1 else (
@@ -23,4 +23,4 @@ def render_table(df: pd.DataFrame):  # pragma: no cover - חיווט Streamlit �
     full_html = (f'<!DOCTYPE html><html dir="rtl" lang="he"><head><style>{TABLE_CSS}</style></head>'
                  f'<body><div role="region" aria-label="טבלת נתוני רכיבים מועשרים" tabindex="0">'
                  f'{html_table}</div></body></html>')
-    components.html(full_html, height=600, scrolling=True)
+    st.iframe(full_html, height=600)

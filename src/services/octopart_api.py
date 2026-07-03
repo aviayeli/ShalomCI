@@ -114,16 +114,23 @@ class OctopartClient:
     def parse_extra_fields(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
         """מחלץ ומתרגם שדות מורחבים ממבנה תגובת ה-GraphQL של Octopart (מלאי וזמן אספקה
         מהמוכר הראשון עם הצעה, ומחיר יחידה) לתצוגה בעברית לצד Mouser/DigiKey. מחזור חיים
-        אינו נשלף מ-Octopart (ראו הערה ב-_PART_QUERY) - Mouser הוא המקור היחיד לכך."""
+        אינו נשלף מ-Octopart (ראו הערה ב-_PART_QUERY) - Mouser הוא המקור היחיד לכך.
+
+        Nexar עשוי להחזיר null (לא רק מפתח חסר) בכל שלב במבנה - data/supSearch/results/
+        part/sellers/offers/prices - ואף עבור איברים בודדים בתוך רשימה (למשל sellers: [null])
+        כשלרכיב חסר מידע. .get(key, default) לא מספיק - הוא מגן רק על מפתח חסר, לא על ערך
+        null מפורש - לכן "or {}"/"or []" ופילטור איברי None בכל שלב."""
         results = ((payload.get("data") or {}).get("supSearch") or {}).get("results") or []
-        part = (results[0].get("part") or {}) if results else {}
+        part = ((results[0] or {}).get("part") or {}) if results else {}
 
         offer = next(
-            (o for seller in (part.get("sellers") or []) for o in (seller.get("offers") or [])), None
+            (o for seller in (part.get("sellers") or []) if seller
+             for o in (seller.get("offers") or []) if o),
+            None,
         )
         quantity = offer.get("inventoryLevel") if offer else None
         lead_days = offer.get("factoryLeadDays") if offer else None
-        prices = (offer or {}).get("prices") or []
+        prices = [p for p in ((offer or {}).get("prices") or []) if p]
         unit_price = next((p.get("price") for p in prices if p.get("quantity") == 1), None)
         if unit_price is None and prices:
             unit_price = prices[0].get("price")

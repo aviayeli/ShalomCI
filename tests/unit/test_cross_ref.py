@@ -54,6 +54,42 @@ async def test_find_alternatives_unsupported_client_returns_empty():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("graphql_response", [
+    {"data": None},
+    {"data": {"supSearch": None}},
+    {"data": {"supSearch": {"results": None}}},
+    {"data": {"supSearch": {"results": [None]}}},
+    {"data": {"supSearch": {"results": [{"part": None}]}}},
+    {"data": {"supSearch": {"results": [{"part": {"similarParts": None}}]}}},
+])
+async def test_find_alternatives_survives_explicit_nulls_at_every_level(graphql_response):
+    """מוודא ש-null מפורש (לא רק מפתח חסר) בכל שלב במבנה ה-GraphQL - כפי שNexar מחזיר בפועל
+    כשלרכיב חסר מידע - לא גורם ל-AttributeError ('NoneType' object has no attribute 'get')."""
+    mock_client = AsyncMock()
+    mock_client.search_cross_reference.return_value = graphql_response
+    engine = CrossReferenceEngine(octopart_client=mock_client)
+
+    alts = await engine.find_alternatives("NE555")
+
+    assert alts == []
+
+
+@pytest.mark.asyncio
+async def test_find_alternatives_filters_out_null_entries_within_similar_parts():
+    """מוודא שאיבר null בודד בתוך רשימת similarParts (למשל [null, {...}]) מסונן ולא מוחזר כמו
+    שהוא - כדי שצרכנים בהמשך (כמו build_rows) לא יקרסו על a.get('mpn') עבור a=None."""
+    mock_client = AsyncMock()
+    mock_client.search_cross_reference.return_value = {
+        "data": {"supSearch": {"results": [{"part": {"similarParts": [None, {"mpn": "NE555_ALT"}]}}]}}
+    }
+    engine = CrossReferenceEngine(octopart_client=mock_client)
+
+    alts = await engine.find_alternatives("NE555")
+
+    assert alts == [{"mpn": "NE555_ALT"}]
+
+
+@pytest.mark.asyncio
 async def test_get_part_data_mouser_shape_active():
     """בדיקה שהמנוע מפרש נכון את מבנה תגובת ה-REST של Mouser (SearchResults.Parts)."""
     mock_client = AsyncMock()

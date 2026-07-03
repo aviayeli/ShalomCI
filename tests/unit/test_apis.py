@@ -351,3 +351,42 @@ def test_octopart_parse_extra_fields_defaults_for_missing_data():
     assert extra["octopart_inventory"] == "Octopart: לא ידוע"
     assert extra["octopart_lead_time"] == "זמן אספקה: לא ידוע"
     assert extra["octopart_price_per_unit"] == "לא זמין"
+
+
+@pytest.mark.parametrize("payload", [
+    {"data": None},
+    {"data": {"supSearch": None}},
+    {"data": {"supSearch": {"results": None}}},
+    {"data": {"supSearch": {"results": [None]}}},
+    {"data": {"supSearch": {"results": [{"part": None}]}}},
+    {"data": {"supSearch": {"results": [{"part": {"sellers": None}}]}}},
+    {"data": {"supSearch": {"results": [{"part": {"sellers": [None]}}]}}},
+    {"data": {"supSearch": {"results": [{"part": {"sellers": [{"offers": None}]}}]}}},
+    {"data": {"supSearch": {"results": [{"part": {"sellers": [{"offers": [None]}]}}]}}},
+    {"data": {"supSearch": {"results": [{"part": {"sellers": [{"offers": [{"prices": None}]}]}}]}}},
+    {"data": {"supSearch": {"results": [{"part": {"sellers": [{"offers": [{"prices": [None]}]}]}}]}}},
+])
+def test_octopart_parse_extra_fields_survives_explicit_nulls_at_every_level(payload):
+    """מוודא ש-null מפורש (לא רק מפתח חסר) בכל שלב במבנה - data/supSearch/results/part/
+    sellers/offers/prices, כולל איברים בודדים בתוך רשימה - לא גורם ל-AttributeError
+    ('NoneType' object has no attribute 'get'), כפי שNexar מחזיר בפועל לרכיבים חסרי מידע."""
+    extra = OctopartClient.parse_extra_fields(payload)
+
+    assert extra["octopart_inventory"] == "Octopart: לא ידוע"
+    assert extra["octopart_lead_time"] == "זמן אספקה: לא ידוע"
+    assert extra["octopart_price_per_unit"] == "לא זמין"
+
+
+def test_octopart_parse_extra_fields_skips_null_offer_to_find_valid_one():
+    """מוודא שאיבר null בודד בתוך רשימת offers (למשל [null, {...}]) לא עוצר את החיפוש -
+    ה-offer התקין הבא ברשימה עדיין נמצא ומשמש לחילוץ הנתונים."""
+    payload = {
+        "data": {"supSearch": {"results": [{"part": {
+            "sellers": [{"offers": [None, {"inventoryLevel": 42, "prices": [{"price": 1.0, "quantity": 1}]}]}],
+        }}]}}
+    }
+
+    extra = OctopartClient.parse_extra_fields(payload)
+
+    assert extra["octopart_inventory"] == "Octopart: 42"
+    assert extra["octopart_price_per_unit"] == "$1.00"
