@@ -5,7 +5,7 @@ from typing import Any, Dict
 import httpx
 
 from src.services.gatekeeper import ApiGatekeeper
-from src.shared.translations import format_inventory, format_lead_time
+from src.shared.translations import format_lead_time
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 # התוצאה העליון "supSearch" תואם במתכוון למבנה שכבר מצופה על ידי CrossReferenceEngine.find_alternatives.
 # הערה: "lifecycleStatus" הוסר בכוונה - שדה זה לא קיים בפועל על הטיפוס SupPart בסכימת Nexar
 # (400 Bad Request: "The field 'lifecycleStatus' does not exist on the type 'SupPart'").
-# Mouser כבר משמש כמקור היחיד למחזור חיים/ציון סיכון, כך שהעמודה "מחזור חיים (Octopart)"
-# תמיד תציג "לא ידוע" - ראו OctopartClient.parse_extra_fields.
+# Mouser כבר משמש כמקור היחיד למחזור חיים/ציון סיכון (מוצג פעם אחת בלבד ב-GUI) - לכן השדה
+# כלל לא נכלל בתגובה, ראו OctopartClient.parse_extra_fields.
 _PART_QUERY = """
 query PartSearch($mpn: String!) {
   supSearch(q: $mpn, limit: 1) {
@@ -112,9 +112,10 @@ class OctopartClient:
 
     @classmethod
     def parse_extra_fields(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """מחלץ ומתרגם שדות מורחבים ממבנה תגובת ה-GraphQL של Octopart (מלאי וזמן אספקה
-        מהמוכר הראשון עם הצעה, ומחיר יחידה) לתצוגה בעברית לצד Mouser/DigiKey. מחזור חיים
-        אינו נשלף מ-Octopart (ראו הערה ב-_PART_QUERY) - Mouser הוא המקור היחיד לכך.
+        """מחלץ שדות מורחבים ממבנה תגובת ה-GraphQL של Octopart: מלאי/מחיר כמספרים גולמיים
+        (מהמוכר הראשון עם הצעה, להשוואת ספקים והצגה עם st.column_config) וזמן אספקה כטקסט
+        עברי. מחזור חיים/ציון סיכון אינם נשלפים כאן - Mouser הוא המקור היחיד לכך (ראו גם
+        הערה ב-_PART_QUERY לגבי lifecycleStatus), ומוצג פעם אחת בלבד ב-GUI.
 
         Nexar עשוי להחזיר null (לא רק מפתח חסר) בכל שלב במבנה - data/supSearch/results/
         part/sellers/offers/prices - ואף עבור איברים בודדים בתוך רשימה (למשל sellers: [null])
@@ -136,11 +137,7 @@ class OctopartClient:
             unit_price = prices[0].get("price")
 
         return {
-            "octopart_lifecycle": "לא ידוע",
-            "octopart_inventory": (
-                format_inventory(cls.VENDOR_NAME, f"{quantity:,}") if quantity is not None
-                else f"{cls.VENDOR_NAME}: לא ידוע"
-            ),
+            "octopart_stock_qty": float(quantity) if quantity is not None else None,
+            "octopart_price_value": float(unit_price) if unit_price is not None else None,
             "octopart_lead_time": format_lead_time(f"{lead_days} Days") if lead_days is not None else "זמן אספקה: לא ידוע",
-            "octopart_price_per_unit": f"${unit_price:.2f}" if unit_price is not None else "לא זמין",
         }

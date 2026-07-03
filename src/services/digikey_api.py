@@ -2,7 +2,7 @@ import time
 from typing import Any, Dict
 
 from src.services.gatekeeper import ApiGatekeeper
-from src.shared.translations import format_inventory, format_lead_time, translate
+from src.shared.translations import format_lead_time
 
 
 class DigiKeyClient:
@@ -63,20 +63,16 @@ class DigiKeyClient:
 
     @classmethod
     def parse_extra_fields(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """מחלץ ומתרגם שדות מורחבים ממבנה תגובת ProductDetails של DigiKey (מחזור חיים,
-        מלאי, זמן אספקה ומחיר) לצורך הצגה בעברית ב-GUI לצד נתוני Mouser."""
+        """מחלץ שדות מורחבים ממבנה תגובת ProductDetails של DigiKey: מלאי/מחיר כמספרים גולמיים
+        (להשוואת ספקים והצגה עם st.column_config) וזמן אספקה כטקסט עברי. מחזור חיים/ציון סיכון
+        אינם נשלפים כאן - Mouser הוא המקור היחיד לכך (מוצג פעם אחת בלבד ב-GUI)."""
         product = payload.get("Product") or {}
-        status = (product.get("ProductStatus") or {}).get("Status")
         quantity = product.get("QuantityAvailable")
         unit_price = product.get("UnitPrice")
         lead_weeks = product.get("ManufacturerLeadWeeks")
 
         return {
-            "digikey_lifecycle": translate(status) if status else "לא ידוע",
-            "digikey_inventory": (
-                format_inventory(cls.VENDOR_NAME, f"{quantity:,}") if quantity is not None
-                else f"{cls.VENDOR_NAME}: לא ידוע"
-            ),
+            "digikey_stock_qty": float(quantity) if quantity is not None else None,
+            "digikey_price_value": float(unit_price) if unit_price is not None else None,
             "digikey_lead_time": format_lead_time(lead_weeks) if lead_weeks else "זמן אספקה: לא ידוע",
-            "digikey_price_per_unit": f"${unit_price:.2f}" if unit_price is not None else "לא זמין",
         }

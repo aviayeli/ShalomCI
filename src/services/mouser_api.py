@@ -1,7 +1,7 @@
 from typing import Any, Dict
 
 from src.services.gatekeeper import ApiGatekeeper
-from src.shared.translations import format_inventory, format_lead_time, translate
+from src.shared.translations import extract_number, format_lead_time, translate
 
 
 class MouserClient:
@@ -41,8 +41,8 @@ class MouserClient:
 
     @classmethod
     def parse_extra_fields(cls, part: Dict[str, Any]) -> Dict[str, Any]:
-        """מחלץ ומתרגם שדות מורחבים ממבנה חלק גולמי של Mouser (מלאי, זמן אספקה, מחיר,
-        חלופה מוצעת, RoHS ואריזה) לצורך הצגה בעברית ב-GUI ובדוחות."""
+        """מחלץ שדות מורחבים ממבנה חלק גולמי של Mouser: מלאי/מחיר כמספרים גולמיים (להשוואת
+        ספקים והצגה עם st.column_config), וזמן אספקה/חלופה מוצעת/RoHS/אריזה כטקסט עברי."""
         price_breaks = part.get("PriceBreaks") or []
         unit_price = next((pb.get("Price") for pb in price_breaks if pb.get("Quantity") == 1), None)
 
@@ -52,9 +52,9 @@ class MouserClient:
         )
 
         return {
-            "inventory": format_inventory(cls.VENDOR_NAME, part.get("Availability")),
+            "mouser_stock_qty": extract_number(part.get("Availability")),
+            "mouser_price_value": extract_number(unit_price),
             "lead_time": format_lead_time(part.get("LeadTime")),
-            "price_per_unit": unit_price or "לא זמין",
             "suggested_replacement": part.get("SuggestedReplacement") or "אין",
             "rohs_status": translate(part.get("ROHSStatus")),
             "packaging": packaging or "לא ידוע",

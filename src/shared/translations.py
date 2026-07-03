@@ -41,13 +41,25 @@ def translate(text: Optional[str]) -> str:
     return _PATTERN.sub(lambda m: TRANSLATIONS[m.group(0)], str(text))
 
 
-def format_inventory(vendor: str, raw_availability: Optional[str]) -> str:
-    """מעצב מחרוזת מלאי ספציפית לספק, למשל 'Mouser: 24,755 במלאי'."""
-    return f"{vendor}: {translate(raw_availability)}"
-
-
 def format_lead_time(raw_lead_time: Optional[str]) -> str:
     """מעצב זמן אספקה מתורגם, למשל 'זמן אספקה: 63 ימים'."""
     if not raw_lead_time:
         return "זמן אספקה: לא ידוע"
     return f"זמן אספקה: {translate(raw_lead_time)}"
+
+
+_NUMBER_RE = re.compile(r"[\d.,]+")
+
+
+def extract_number(text: Optional[str]) -> Optional[float]:
+    """שולף את הערך המספרי הראשון ממחרוזת מפורמטת של ספק (למשל '24,755 In Stock' או '₪1.85').
+    מוחזר None כשלא נמצא מספר, כדי לאפשר הבחנה בין 'ערך 0 אמיתי' לבין 'אין נתון'."""
+    if not text:
+        return None
+    match = _NUMBER_RE.search(str(text))
+    if not match:
+        return None
+    try:
+        return float(match.group().replace(",", ""))
+    except ValueError:
+        return None

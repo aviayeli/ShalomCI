@@ -16,11 +16,12 @@ from src.shared.translations import translate
 load_dotenv()
 
 # שדות מורחבים המגיעים מ-cross_ref (זמינים כרגע רק כשה-Gatekeeper מחובר בפועל ל-Mouser)
-# יחד עם ערכי ברירת מחדל בעברית לרכיב שלא נמצא עבורו מידע.
+# יחד עם ערכי ברירת מחדל לרכיב שלא נמצא עבורו מידע. מלאי/מחיר הם None (לא מספר מזויף) -
+# ראו הערה מקבילה ב-cross_ref.DIGIKEY_FIELD_DEFAULTS/OCTOPART_FIELD_DEFAULTS.
 EXTRA_FIELD_DEFAULTS = {
-    "inventory": "לא ידוע",
+    "mouser_stock_qty": None,
+    "mouser_price_value": None,
     "lead_time": "זמן אספקה: לא ידוע",
-    "price_per_unit": "לא זמין",
     "suggested_replacement": "אין",
     "rohs_status": "לא ידוע",
     "packaging": "לא ידוע",

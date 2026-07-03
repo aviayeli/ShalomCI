@@ -26,10 +26,18 @@ RISK_SCORE_HELP = (
     "stock availability, and lead times across all components."
 )
 
-# CSS גלובלי (RTL ורקע בלבד) - עיצוב הטבלה עבר ל-iframe מבודד ב-render_table, ראו שם למה.
+# CSS גלובלי: RTL, טיפוגרפיה ורקע. מאז המעבר ל-st.dataframe הטבעי (table_render.py) הטבלה
+# מרונדרת ב-DOM הראשי (לא ב-iframe מבודד) - כך שה-CSS הזה משפיע גם על מכולות הטבלה, אם כי
+# תוכן הפנימי של הרשת (glide-data-grid) מצויר על canvas ולכן לא ניתן לעצב תא-תא באמצעות CSS.
 RTL_CSS = """
 <style>
-    * { direction: rtl !important; text-align: right !important; font-family: 'Segoe UI', sans-serif; }
+    * {
+        direction: rtl !important;
+        text-align: right !important;
+        font-family: 'Segoe UI', Arial, sans-serif !important;
+        font-size: 1.05rem;
+        font-style: normal !important;
+    }
     .stApp { background-color: #F8F9FA; }
 </style>
 """

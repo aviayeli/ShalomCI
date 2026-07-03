@@ -136,22 +136,22 @@ def test_parse_extra_fields_extracts_and_translates_full_part():
 
     extra = MouserClient.parse_extra_fields(part)
 
-    assert extra["inventory"] == "Mouser: 24,755 במלאי"
+    assert extra["mouser_stock_qty"] == 24755.0
     assert extra["lead_time"] == "זמן אספקה: 63 ימים"
-    assert extra["price_per_unit"] == "₪1.85"
+    assert extra["mouser_price_value"] == 1.85
     assert extra["suggested_replacement"] == "NE555DR-ALT"
     assert extra["rohs_status"] == "תואם RoHS"
     assert extra["packaging"] == "Cut Tape"
 
 
 def test_parse_extra_fields_defaults_for_missing_data():
-    """מוודא שערכים חסרים (למשל אין PriceBreaks/חלופה מוצעת) מקבלים ברירות מחדל בעברית."""
+    """מוודא שערכים חסרים (למשל אין PriceBreaks/חלופה מוצעת) מקבלים ברירות מחדל תקינות."""
     extra = MouserClient.parse_extra_fields({})
 
-    assert extra["price_per_unit"] == "לא זמין"
+    assert extra["mouser_price_value"] is None
+    assert extra["mouser_stock_qty"] is None
     assert extra["suggested_replacement"] == "אין"
     assert extra["packaging"] == "לא ידוע"
-    assert extra["inventory"] == "Mouser: לא ידוע"
 
 
 def test_digikey_client_missing_credentials(gatekeeper):
@@ -198,20 +198,18 @@ def test_digikey_parse_extra_fields_extracts_and_translates_full_product():
 
     extra = DigiKeyClient.parse_extra_fields(payload)
 
-    assert extra["digikey_lifecycle"] == "פעיל"
-    assert extra["digikey_inventory"] == "DigiKey: 24,755"
+    assert extra["digikey_stock_qty"] == 24755.0
     assert extra["digikey_lead_time"] == "זמן אספקה: 9 שבועות"
-    assert extra["digikey_price_per_unit"] == "$1.85"
+    assert extra["digikey_price_value"] == 1.85
 
 
 def test_digikey_parse_extra_fields_defaults_for_missing_data():
-    """מוודא שתגובת DigiKey ריקה (למשל מק"ט לא נמצא) מקבלת ברירות מחדל בעברית ולא קורסת."""
+    """מוודא שתגובת DigiKey ריקה (למשל מק"ט לא נמצא) מקבלת ברירות מחדל תקינות ולא קורסת."""
     extra = DigiKeyClient.parse_extra_fields({})
 
-    assert extra["digikey_lifecycle"] == "לא ידוע"
-    assert extra["digikey_inventory"] == "DigiKey: לא ידוע"
+    assert extra["digikey_stock_qty"] is None
+    assert extra["digikey_price_value"] is None
     assert extra["digikey_lead_time"] == "זמן אספקה: לא ידוע"
-    assert extra["digikey_price_per_unit"] == "לא זמין"
 
 
 def test_octopart_client_missing_credentials(gatekeeper):
@@ -321,10 +319,10 @@ def test_octopart_parse_extra_fields_extracts_and_translates_full_result():
 
     extra = OctopartClient.parse_extra_fields(payload)
 
-    assert extra["octopart_lifecycle"] == "לא ידוע"
-    assert extra["octopart_inventory"] == "Octopart: 3,400"
+    assert "octopart_lifecycle" not in extra
+    assert extra["octopart_stock_qty"] == 3400.0
     assert extra["octopart_lead_time"] == "זמן אספקה: 12 ימים"
-    assert extra["octopart_price_per_unit"] == "$0.95"
+    assert extra["octopart_price_value"] == 0.95
 
 
 def test_octopart_parse_extra_fields_falls_back_to_first_price_tier_without_quantity_one():
@@ -340,17 +338,16 @@ def test_octopart_parse_extra_fields_falls_back_to_first_price_tier_without_quan
 
     extra = OctopartClient.parse_extra_fields(payload)
 
-    assert extra["octopart_price_per_unit"] == "$2.50"
+    assert extra["octopart_price_value"] == 2.5
 
 
 def test_octopart_parse_extra_fields_defaults_for_missing_data():
-    """מוודא שתגובת Octopart ריקה (למשל מק"ט לא נמצא) מקבלת ברירות מחדל בעברית ולא קורסת."""
+    """מוודא שתגובת Octopart ריקה (למשל מק"ט לא נמצא) מקבלת ברירות מחדל תקינות ולא קורסת."""
     extra = OctopartClient.parse_extra_fields({"data": {"supSearch": {"results": []}}})
 
-    assert extra["octopart_lifecycle"] == "לא ידוע"
-    assert extra["octopart_inventory"] == "Octopart: לא ידוע"
+    assert extra["octopart_stock_qty"] is None
+    assert extra["octopart_price_value"] is None
     assert extra["octopart_lead_time"] == "זמן אספקה: לא ידוע"
-    assert extra["octopart_price_per_unit"] == "לא זמין"
 
 
 @pytest.mark.parametrize("payload", [
@@ -372,9 +369,9 @@ def test_octopart_parse_extra_fields_survives_explicit_nulls_at_every_level(payl
     ('NoneType' object has no attribute 'get'), כפי שNexar מחזיר בפועל לרכיבים חסרי מידע."""
     extra = OctopartClient.parse_extra_fields(payload)
 
-    assert extra["octopart_inventory"] == "Octopart: לא ידוע"
+    assert extra["octopart_stock_qty"] is None
     assert extra["octopart_lead_time"] == "זמן אספקה: לא ידוע"
-    assert extra["octopart_price_per_unit"] == "לא זמין"
+    assert extra["octopart_price_value"] is None
 
 
 def test_octopart_parse_extra_fields_skips_null_offer_to_find_valid_one():
@@ -388,5 +385,5 @@ def test_octopart_parse_extra_fields_skips_null_offer_to_find_valid_one():
 
     extra = OctopartClient.parse_extra_fields(payload)
 
-    assert extra["octopart_inventory"] == "Octopart: 42"
-    assert extra["octopart_price_per_unit"] == "$1.00"
+    assert extra["octopart_stock_qty"] == 42.0
+    assert extra["octopart_price_value"] == 1.0

@@ -11,19 +11,19 @@ from src.services.octopart_api import OctopartClient
 # "לא מצאנו את הרכיב" לבין "לא הצלחנו בכלל להגיע ל-Mouser" ולהציג התראה מפורשת על כך.
 NETWORK_ERROR_STATUS = "Network Error"
 
-# ברירות מחדל בעברית לנתוני DigiKey/Octopart - מוצגים לצד Mouser (side-by-side), אינם
-# משפיעים על risk_score המרכזי שממשיך להיות מחושב אך ורק מנתוני Mouser/lifecycle_status.
+# ברירות מחדל לנתוני DigiKey/Octopart - מוצגים לצד Mouser (side-by-side) להשוואת ספקים,
+# אינם משפיעים על risk_score/lifecycle_status המרכזיים שנגזרים אך ורק מ-Mouser (מקור יחיד,
+# מוצג פעם אחת ב-GUI). מלאי/מחיר הם None (לא מספר מזויף כמו 0) כשאין נתון - כדי ש"ספק
+# מומלץ" וה-ProgressColumn/NumberColumn ב-GUI ידעו להבחין בין "לא ידוע" ל"אפס במלאי".
 DIGIKEY_FIELD_DEFAULTS = {
-    "digikey_lifecycle": "לא ידוע",
-    "digikey_inventory": "DigiKey: לא ידוע",
+    "digikey_stock_qty": None,
+    "digikey_price_value": None,
     "digikey_lead_time": "זמן אספקה: לא ידוע",
-    "digikey_price_per_unit": "לא זמין",
 }
 OCTOPART_FIELD_DEFAULTS = {
-    "octopart_lifecycle": "לא ידוע",
-    "octopart_inventory": "Octopart: לא ידוע",
+    "octopart_stock_qty": None,
+    "octopart_price_value": None,
     "octopart_lead_time": "זמן אספקה: לא ידוע",
-    "octopart_price_per_unit": "לא זמין",
 }
 
 

@@ -153,7 +153,7 @@ async def test_get_part_data_merges_mouser_extra_fields():
     engine = CrossReferenceEngine(api_client=client)
     data = await engine.get_part_data("NE555")
 
-    assert data["inventory"] == "Mouser: 5,000 במלאי"
+    assert data["mouser_stock_qty"] == 5000.0
     assert data["lead_time"] == "זמן אספקה: 10 ימים"
     await client.gatekeeper.close()
 
@@ -208,9 +208,8 @@ async def test_get_digikey_data_merges_parsed_fields():
     engine = CrossReferenceEngine(digikey_client=mock_client)
     data = await engine.get_digikey_data("NE555")
 
-    assert data["digikey_lifecycle"] == "פעיל"
-    assert data["digikey_inventory"] == "DigiKey: 100"
-    assert data["digikey_price_per_unit"] == "$2.50"
+    assert data["digikey_stock_qty"] == 100.0
+    assert data["digikey_price_value"] == 2.5
     mock_client.search_part.assert_awaited_once_with("NE555")
 
 
@@ -262,9 +261,9 @@ async def test_get_octopart_data_merges_parsed_fields():
     engine = CrossReferenceEngine(octopart_client=mock_client)
     data = await engine.get_octopart_data("NE555")
 
-    assert data["octopart_lifecycle"] == "לא ידוע"
-    assert data["octopart_inventory"] == "Octopart: 500"
-    assert data["octopart_price_per_unit"] == "$0.30"
+    assert "octopart_lifecycle" not in data
+    assert data["octopart_stock_qty"] == 500.0
+    assert data["octopart_price_value"] == 0.3
     mock_client.search_part.assert_awaited_once_with("NE555")
 
 

@@ -57,13 +57,13 @@ async def test_find_mitigations_and_case_opening(sdk):
 
 
 async def test_enrich_components_fills_extra_field_defaults_without_client(sdk):
-    """ללא קליינט Mouser מחובר, השדות המורחבים (מלאי, זמן אספקה וכו') מקבלים ברירת מחדל בעברית."""
+    """ללא קליינט Mouser מחובר, השדות המורחבים (מלאי, זמן אספקה וכו') מקבלים ברירת מחדל תקינה."""
     await sdk.initialize()
     components = [{"mpn": "NE555"}]
 
     await sdk.enrich_components(components)
 
-    assert components[0]["inventory"] == "לא ידוע"
+    assert components[0]["mouser_stock_qty"] is None
     assert components[0]["lead_time"] == "זמן אספקה: לא ידוע"
     assert components[0]["suggested_replacement"] == "אין"
 
