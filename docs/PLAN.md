@@ -29,10 +29,12 @@ ShalomCI/
 │   ├── cli/
 │   │   └── main.py            # ממשק שורת הפקודה (Proxy בלבד, ללא לוגיקה)
 │   └── gui/
-│       ├── app.py             # ממשק Streamlit בעברית/RTL (Proxy בלבד, ללא לוגיקה)
-│       ├── table_rows.py      # בניית שורות הטבלה מנתוני הרכיבים (status_icon/build_rows, ניתן לבדיקה)
-│       ├── table_controls.py  # לוגיקת סינון/מיון טהורה (ניתנת לבדיקה, ללא Streamlit)
-│       └── table_render.py    # רינדור הטבלה ב-iframe מבודד (components.html)
+│       ├── app.py                   # ממשק Streamlit בעברית/RTL (Proxy בלבד, ללא לוגיקה)
+│       ├── ui_helpers.py            # הודעת פתיחה + תבנית BOM להורדה (render_welcome_header)
+│       ├── accessibility_widget.py  # הזרקת תפריט הנגישות Enable.co.il ל-window.parent
+│       ├── table_rows.py            # בניית שורות הטבלה מנתוני הרכיבים (status_icon/build_rows, ניתן לבדיקה)
+│       ├── table_controls.py        # לוגיקת סינון/מיון טהורה (ניתנת לבדיקה, ללא Streamlit)
+│       └── table_render.py          # רינדור הטבלה ב-iframe מבודד (st.iframe)
 ├── tests/
 │   ├── unit/                  # בדיקות יחידה לכל מודול (test_sdk.py, test_gatekeeper.py, ...)
 │   └── integration/           # בדיקות אינטגרציה בין שכבות
@@ -87,7 +89,8 @@ ShalomCI/
 
 ## 6. ארכיטקטורת ה-GUI (Streamlit, RTL & Accessibility)
 שכבת ה-GUI (`src/gui/app.py`) היא Proxy בלבד: מעלה קובץ, קוראת ל-`ShalomCI_SDK`, ומרנדרת את התוצאה. שום חישוב סיכון, ניקוד או קריאת API לא מתבצעים בקובץ זה. בניית שורות הטבלה (`status_icon`/`build_rows`, כולל עמודות ספקי המשנה) חיה ב-`src/gui/table_rows.py`, לוגיקת הסינון/מיון הטהורה חיה ב-`src/gui/table_controls.py`, ורינדור הטבלה עצמה חי ב-`src/gui/table_render.py` - פיצול שנדרש כדי לעמוד בחוק 150 השורות לקובץ אחרי הוספת עמודות DigiKey/Octopart.
-- **טבלה ב-iframe מבודד (`components.html`):** `table_render.py` מרנדר את הטבלה בתוך `iframe` מבודד במקום `st.markdown`, כדי לעקוף שני מכשולים: (1) סינון aria-/role attributes על ידי DOMPurify של Streamlit, החוסם תגיות נגישות; (2) התנגשות ה-CSS הגלובלי של האפליקציה עם ה-`position: sticky` של כותרת הטבלה. מאחר ש-`components.html` מריץ HTML/JS גולמי ללא sanitization, וערכי התאים מגיעים ממקורות לא מהימנים (BOM שהועלה, תגובות API), חובה להשתמש ב-`df.style.format(escape="html")` לפני ההמרה ל-HTML כדי למנוע החדרת קוד (XSS).
+- **טבלה ב-iframe מבודד (`st.iframe`):** `table_render.py` מרנדר את הטבלה בתוך `iframe` מבודד (`st.iframe`, לא ה-`st.components.v1.html` המיושן) במקום `st.markdown`, כדי לעקוף שני מכשולים: (1) סינון aria-/role attributes על ידי DOMPurify של Streamlit, החוסם תגיות נגישות; (2) התנגשות ה-CSS הגלובלי של האפליקציה עם ה-`position: sticky` של כותרת הטבלה. מאחר שה-iframe מריץ HTML/JS גולמי ללא sanitization, וערכי התאים מגיעים ממקורות לא מהימנים (BOM שהועלה, תגובות API), חובה להשתמש ב-`df.style.format(escape="html")` לפני ההמרה ל-HTML כדי למנוע החדרת קוד (XSS). `accessibility_widget.py` משתמש באותו `st.iframe` (בגודל 1x1, בלתי נראה בפועל - `height`/`width=0` נדחים על ידי Streamlit) להזרקת תפריט הנגישות Enable.co.il ל-`window.parent.document.head`.
+- **הודעת פתיחה ותבנית BOM (`ui_helpers.py`):** `render_welcome_header()` מוצג מיד אחרי הכותרת - מסביר בקצרה את מקורות הנתונים (Mouser/DigiKey/Octopart) ואת דרישת עמודת ה-MPN, ומציע תבנית CSV ריקה להורדה. מיישם את היוריסטיקות של Nielsen ל"System Status Visibility" ו-"Error Prevention" - מונע מראש כשל זיהוי עמודות ב-`BomParser`.
 - **עמודות ספקי משנה (`table_rows.py`):** `SECONDARY_VENDORS` ממפה שם ספק לתצוגה (DigiKey/Octopart) לקידומת השדה ב-comp (`digikey_`/`octopart_`), ו-`vendor_columns()` בונה מהן ארבע עמודות (מחזור חיים/מלאי/זמן אספקה/מחיר) לכל ספק בלולאה - כדי למנוע שכפול קוד בין ספקים וכך שהוספת ספק עתידי תדרוש שורה אחת בלבד, לא בלוק חדש.
 - **סרגל סינון ומיון (`table_controls.py`):** מיישם חיפוש חופשי, סינון סטטוסים מרובה-בחירה, ומיון. אפשרויות המיון (`sort_options`) נגזרות דינמית מרשימת עמודות ה-DataFrame הנוכחי בפועל (`list(df.columns)`) ולא מרשימה קבועה בקוד, כך שכל עמודה עתידית (כולל עמודות DigiKey/Octopart) תופיע אוטומטית בתפריט. עמודות טקסט מפורמטות (`_NUMERIC_TEXT_COLUMNS`, למשל "מחיר ליחידה" או "זמן אספקה") ממוינות על בסיס הערך המספרי שמחולץ מהן ב-Regex ולא לקסיקוגרפית; שאר העמודות נופלות חזרה למיון הרגיל של Pandas.
 - **RTL בשתי רמות:** כיוון ה-RTL מוגדר גם גלובלית (`* { direction: rtl !important; }`) וגם במפורש ברמת הבלוק על `.risk-table`, כדי להבטיח שסדר העמודות בטבלה (שנקבע לפי `direction` של האלמנט עצמו, לא רק של אב קדמון) יהיה נכון בכל דפדפן.

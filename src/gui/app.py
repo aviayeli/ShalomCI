@@ -17,6 +17,7 @@ from src.gui.accessibility_widget import inject_accessibility_widget
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_render import render_table
 from src.gui.table_rows import build_rows
+from src.gui.ui_helpers import render_welcome_header
 from src.sdk import ShalomCI_SDK
 
 RISK_SCORE_HELP = (
@@ -68,12 +69,13 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     st.markdown(RTL_CSS, unsafe_allow_html=True)
     inject_accessibility_widget()
     st.title("⚙️ ShalomCI - אינטליגנציית רכיבים")
+    render_welcome_header()
 
     uploaded_file = st.file_uploader("העלה עץ מוצר (BOM)", type=["xlsx", "csv"])
     col_run, col_download = st.columns(2)
 
     if col_run.button("🚀 הפעל ניתוח", disabled=not uploaded_file):
-        with st.spinner("מעבד ומעשיר נתונים (זה לוקח רגע)..."):
+        with st.spinner("טוען נתונים ושואב מידע מ-Mouser, DigiKey ו-Octopart, אנא המתן..."):
             try:
                 st.session_state["result"] = cached_analysis(uploaded_file.getvalue(), uploaded_file.name)
             except Exception as e:
