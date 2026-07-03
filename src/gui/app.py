@@ -13,6 +13,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from src.core.cross_ref import NETWORK_ERROR_STATUS
+from src.gui.accessibility_widget import inject_accessibility_widget
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_render import render_table
 from src.gui.table_rows import build_rows
@@ -65,6 +66,7 @@ def cached_analysis(file_bytes: bytes, filename: str):  # pragma: no cover - ח�
 def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלוגיקה הטהורה נבדקת ב-table_rows/run_analysis
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
+    inject_accessibility_widget()
     st.title("⚙️ ShalomCI - אינטליגנציית רכיבים")
 
     uploaded_file = st.file_uploader("העלה עץ מוצר (BOM)", type=["xlsx", "csv"])

@@ -82,9 +82,22 @@ class ApiGatekeeper:
                 response.raise_for_status()
                 return response
 
-            except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                # שגיאת לקוח (400/401/403/404 וכו', לא 429) היא תקלה בבקשה עצמה (למשל שאילתת
+                # GraphQL שגויה) שלא תיפתר בניסיון חוזר - כישלון מהיר במקום Exponential Backoff
+                # שחוסם באופן סינכרוני את כל תור העשרת ה-BOM (עד 200 רכיבים) לדקות ארוכות.
+                if 400 <= status < 500:
+                    logger.warning(f"Client error {status} from {provider}, failing fast (no retry): {e}")
+                    raise
                 if attempt == retries - 1:
                     raise e  # זריקת השגיאה אם חצינו את מכסת הניסיונות
+                logger.warning(f"Server error: {e}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+                delay *= 2
+            except httpx.RequestError as e:
+                if attempt == retries - 1:
+                    raise e
                 logger.warning(f"Network error: {e}. Retrying in {delay}s...")
                 await asyncio.sleep(delay)
                 delay *= 2

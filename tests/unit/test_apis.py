@@ -17,9 +17,10 @@ async def gatekeeper():
 
 
 class MockResponse:
-    def __init__(self, json_data, status_code=200):
+    def __init__(self, json_data, status_code=200, text=None):
         self._json_data = json_data
         self.status_code = status_code
+        self.text = text if text is not None else str(json_data)
 
     def json(self):
         return self._json_data
@@ -59,6 +60,37 @@ async def test_gatekeeper_retries_on_429(gatekeeper, monkeypatch):
 
     assert response.status_code == 200
     assert mock_request.call_count == 3
+
+
+async def test_gatekeeper_fails_fast_on_400_client_error_no_retry(gatekeeper, monkeypatch):
+    """מוודא ששגיאת 400 (Bad Request) נכשלת מיידית ולא נכנסת ללולאת Retry/Backoff -
+    זו הייתה תקלה שחסמה באופן סינכרוני את כל תור העשרת ה-BOM לדקות ארוכות."""
+    mock_request = AsyncMock(return_value=MockResponse({"errors": "bad query"}, status_code=400))
+    monkeypatch.setattr(gatekeeper.client, "request", mock_request)
+    sleep_mock = AsyncMock()
+    monkeypatch.setattr("src.services.gatekeeper.asyncio.sleep", sleep_mock)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await gatekeeper.request("octopart", "POST", "http://test.com", retries=3)
+
+    mock_request.assert_called_once()
+    sleep_mock.assert_not_awaited()
+
+
+async def test_gatekeeper_retries_on_500_server_error(gatekeeper, monkeypatch):
+    """מוודא ששגיאת שרת (5xx) עדיין נכנסת ל-Retry עם Exponential Backoff, בניגוד ל-4xx."""
+    responses = [
+        MockResponse({}, status_code=503),
+        MockResponse({"success": True}, status_code=200),
+    ]
+    mock_request = AsyncMock(side_effect=responses)
+    monkeypatch.setattr(gatekeeper.client, "request", mock_request)
+    monkeypatch.setattr("src.services.gatekeeper.asyncio.sleep", AsyncMock())
+
+    response = await gatekeeper.request("octopart", "POST", "http://test.com", retries=3)
+
+    assert response.status_code == 200
+    assert mock_request.call_count == 2
 
 
 async def test_mouser_client_valid_search(gatekeeper, monkeypatch):
@@ -213,6 +245,20 @@ async def test_octopart_client_fetches_and_caches_access_token(gatekeeper, monke
     assert "NE555" in graphql_call_kwargs["json"]["variables"]["mpn"]
 
 
+async def test_octopart_token_request_logs_and_reraises_on_400(gatekeeper, monkeypatch, caplog):
+    """מוודא ששגיאת 400 בשלב שליפת הטוקן עצמו (client_id/secret שגויים) גם היא נרשמת ונזרקת הלאה."""
+    client = OctopartClient(client_id="bad_id", client_secret="bad_secret", gatekeeper=gatekeeper)
+    error_body = '{"error":"invalid_client"}'
+    mock_request = AsyncMock(return_value=MockResponse({}, status_code=400, text=error_body))
+    monkeypatch.setattr(gatekeeper.client, "request", mock_request)
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.search_part("NE555")
+
+    assert "invalid_client" in caplog.text
+
+
 async def test_octopart_search_cross_reference_is_same_query_as_search_part(gatekeeper, monkeypatch):
     """מוודא ש-search_cross_reference (המשמש ל-FFF) משתמש באותה שאילתה בדיוק כמו search_part."""
     client = OctopartClient(client_id="fake_id", client_secret="fake_secret", gatekeeper=gatekeeper)
@@ -225,6 +271,25 @@ async def test_octopart_search_cross_reference_is_same_query_as_search_part(gate
     result = await client.search_cross_reference("NE555")
 
     assert result == {"data": {"supSearch": {"results": []}}}
+
+
+async def test_octopart_search_part_logs_response_body_and_reraises_on_400(gatekeeper, monkeypatch, caplog):
+    """מוודא שתגובת שגיאת 400 מ-Nexar (GraphQL) נרשמת ללוג עם גוף התגובה המדויק, ואז נזרקת הלאה
+    (לא נבלעת) כדי ש-CrossReferenceEngine.get_octopart_data ידע ליפול חזרה לברירות מחדל."""
+    client = OctopartClient(client_id="fake_id", client_secret="fake_secret", gatekeeper=gatekeeper)
+
+    token_response = MockResponse({"access_token": "abc123", "expires_in": 3600})
+    error_body = '{"errors":[{"message":"Cannot query field \\"supSearch\\" on type Query."}]}'
+    bad_response = MockResponse({}, status_code=400, text=error_body)
+    mock_request = AsyncMock(side_effect=[token_response, bad_response])
+    monkeypatch.setattr(gatekeeper.client, "request", mock_request)
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.search_part("NE555")
+
+    assert "supSearch" in caplog.text
+    assert "400" in caplog.text
 
 
 def test_octopart_parse_extra_fields_extracts_and_translates_full_result():

@@ -1,8 +1,13 @@
+import logging
 import time
 from typing import Any, Dict
 
+import httpx
+
 from src.services.gatekeeper import ApiGatekeeper
 from src.shared.translations import format_inventory, format_lead_time, translate
+
+logger = logging.getLogger(__name__)
 
 # שאילתת GraphQL יחידה המשמשת גם לנתוני מלאי/מחיר וגם לחלופות (similarParts) - שדה
 # התוצאה העליון "supSearch" תואם במתכוון למבנה שכבר מצופה על ידי CrossReferenceEngine.find_alternatives.
@@ -52,18 +57,22 @@ class OctopartClient:
         if self._access_token and time.monotonic() < self._token_expires_at:
             return self._access_token
 
-        response = await self.gatekeeper.request(
-            provider="octopart",
-            method="POST",
-            url=self.TOKEN_URL,
-            data={
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "grant_type": "client_credentials",
-                "scope": "supply.domain",
-            },
-            timeout=10.0,
-        )
+        try:
+            response = await self.gatekeeper.request(
+                provider="octopart",
+                method="POST",
+                url=self.TOKEN_URL,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "grant_type": "client_credentials",
+                    "scope": "supply.domain",
+                },
+                timeout=10.0,
+            )
+        except httpx.HTTPStatusError as e:
+            self._log_http_error("OAuth2 token request", e)
+            raise
         payload = response.json()
         self._access_token = payload["access_token"]
         expires_in = payload.get("expires_in", 3600)
@@ -73,18 +82,30 @@ class OctopartClient:
     async def search_part(self, mpn: str) -> Dict[str, Any]:
         """מריץ את שאילתת ה-GraphQL עבור מק"ט נתון (Octopart/Nexar supSearch)."""
         token = await self._get_access_token()
-        response = await self.gatekeeper.request(
-            provider="octopart",
-            method="POST",
-            url=self.GRAPHQL_URL,
-            json={"query": _PART_QUERY, "variables": {"mpn": mpn}},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=10.0,
-        )
+        try:
+            response = await self.gatekeeper.request(
+                provider="octopart",
+                method="POST",
+                url=self.GRAPHQL_URL,
+                json={"query": _PART_QUERY, "variables": {"mpn": mpn}},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10.0,
+            )
+        except httpx.HTTPStatusError as e:
+            self._log_http_error(f"supSearch query for mpn={mpn}", e)
+            raise
         return response.json()
 
     # find_alternatives (FFF) משתמש באותה שאילתה בדיוק - היא כבר כוללת similarParts.
     search_cross_reference = search_part
+
+    @staticmethod
+    def _log_http_error(context: str, e: httpx.HTTPStatusError) -> None:
+        """מדפיס ללוג את גוף תגובת השגיאה הגולמי (response.text) - Nexar/GraphQL בדרך כלל
+        מחזירים הודעת שגיאה מפורטת (למשל שם שדה שגוי בשאילתת supSearch) בגוף תגובת ה-400."""
+        status = e.response.status_code if e.response is not None else "?"
+        body = e.response.text if e.response is not None else "<no response body>"
+        logger.error(f"Octopart API error ({context}) - HTTP {status}: {body}")
 
     @classmethod
     def parse_extra_fields(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
