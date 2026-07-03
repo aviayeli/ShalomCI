@@ -11,6 +11,14 @@ cases.db
 # Generated report outputs (produced by running the CLI/GUI locally)
 [Rr]eport_*.xlsx
 
+# Excel lock files (created while a workbook is open in Excel)
+~$*.xlsx
+
+# PyInstaller build artifacts (build.py output)
+build/
+dist/
+*.spec
+
 # Python build & cache
 __pycache__/
 *.py[cod]
