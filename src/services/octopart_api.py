@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from typing import Any, Dict
@@ -54,33 +55,39 @@ class OctopartClient:
         self.gatekeeper = gatekeeper
         self._access_token = None
         self._token_expires_at = 0.0
+        self._token_lock = asyncio.Lock()  # single-flight: מונע N בקשות טוקן מקבילות (stampede)
 
     async def _get_access_token(self) -> str:
         """שולף Access Token דרך זרימת Client Credentials מול Nexar, וממחזר אותו עד לפקיעת התוקף."""
         if self._access_token and time.monotonic() < self._token_expires_at:
             return self._access_token
 
-        try:
-            response = await self.gatekeeper.request(
-                provider="octopart",
-                method="POST",
-                url=self.TOKEN_URL,
-                data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "grant_type": "client_credentials",
-                    "scope": "supply.domain",
-                },
-                timeout=10.0,
-            )
-        except httpx.HTTPStatusError as e:
-            self._log_http_error("OAuth2 token request", e)
-            raise
-        payload = response.json()
-        self._access_token = payload["access_token"]
-        expires_in = payload.get("expires_in", 3600)
-        self._token_expires_at = time.monotonic() + expires_in - self.TOKEN_EXPIRY_MARGIN_SECONDS
-        return self._access_token
+        # נעילה + בדיקה כפולה (double-checked): רק בקשה אחת בפועל מרעננת את הטוקן (מסלול מהיר ללא נעילה למעלה)
+        async with self._token_lock:
+            if self._access_token and time.monotonic() < self._token_expires_at:
+                return self._access_token
+
+            try:
+                response = await self.gatekeeper.request(
+                    provider="octopart",
+                    method="POST",
+                    url=self.TOKEN_URL,
+                    data={
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "grant_type": "client_credentials",
+                        "scope": "supply.domain",
+                    },
+                    timeout=10.0,
+                )
+            except httpx.HTTPStatusError as e:
+                self._log_http_error("OAuth2 token request", e)
+                raise
+            payload = response.json()
+            self._access_token = payload["access_token"]
+            expires_in = payload.get("expires_in", 3600)
+            self._token_expires_at = time.monotonic() + expires_in - self.TOKEN_EXPIRY_MARGIN_SECONDS
+            return self._access_token
 
     async def search_part(self, mpn: str) -> Dict[str, Any]:
         """מריץ את שאילתת ה-GraphQL עבור מק"ט נתון (Octopart/Nexar supSearch)."""

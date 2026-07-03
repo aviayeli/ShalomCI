@@ -16,8 +16,8 @@ from src.core.cross_ref import NETWORK_ERROR_STATUS
 from src.gui.accessibility_widget import inject_accessibility_widget
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_render import render_table
-from src.gui.table_rows import build_rows
-from src.gui.ui_helpers import render_welcome_header
+from src.gui.table_rows import build_rows, summarize_risk
+from src.gui.ui_helpers import render_summary_metrics, render_welcome_header
 from src.sdk import ShalomCI_SDK
 
 RISK_SCORE_HELP = (
@@ -112,6 +112,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
 
     df = pd.DataFrame(build_rows(data))
 
+    render_summary_metrics(summarize_risk(data))
     st.subheader("🔍 סינון ומיון")
     col_search, col_status, col_sort, col_order = st.columns([2, 2, 2, 1])
     search = col_search.text_input("חיפוש (מק\"ט / יצרן)")

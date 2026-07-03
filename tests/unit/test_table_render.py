@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.gui.table_render import _mpn_bidi, _price_text, _risk_color, _stock_text
+from src.gui.table_render import _mpn_bidi, _price_text, _risk_color, _stock_text, _vendor_badge
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -50,3 +50,24 @@ def test_mpn_bidi_escapes_malicious_content_inside_the_tag():
     """מוודא שתוכן המק"ט עצמו מוברח נגד XSS, גם כשהוא עטוף ב-<bdi> לא-מוברח."""
     result = _mpn_bidi("<script>alert(1)</script>")
     assert result == "<bdi>&lt;script&gt;alert(1)&lt;/script&gt;</bdi>"
+
+
+@pytest.mark.parametrize("vendor,slug", [
+    ("Mouser", "mouser"),
+    ("DigiKey", "digikey"),
+    ("Octopart", "octopart"),
+    ("לא ידוע", "unknown"),
+])
+def test_vendor_badge_wraps_value_in_per_vendor_pill(vendor, slug):
+    """מוודא שכל ספק נעטף ב-span עם מחלקת ה-slug הייעודית שלו (או unknown לערך לא מוכר)."""
+    result = _vendor_badge(vendor)
+    assert result == f'<span class="vendor-badge vendor-badge-{slug}">{vendor}</span>'
+
+
+def test_vendor_badge_escapes_malicious_content_inside_the_span():
+    """מוודא שתוכן הספק מוברח נגד XSS בדיוק כמו ב-_mpn_bidi (format ללא escape="html")."""
+    result = _vendor_badge("<script>alert(1)</script>")
+    assert result == (
+        '<span class="vendor-badge vendor-badge-unknown">'
+        "&lt;script&gt;alert(1)&lt;/script&gt;</span>"
+    )

@@ -28,3 +28,12 @@ def render_welcome_header() -> None:
         file_name="shalomci_bom_template.csv",
         mime="text/csv",
     )
+
+
+def render_summary_metrics(summary: dict) -> None:
+    """מציג רצועת מדדים (4 עמודות) עם התפלגות הסיכון: סה"כ / קריטי / אזהרה / תקינים."""
+    cols = st.columns(4)
+    cols[0].metric("סה\"כ רכיבים", summary["total"])
+    cols[1].metric("סיכון קריטי", summary["critical"])
+    cols[2].metric("אזהרה", summary["warning"])
+    cols[3].metric("תקינים", summary["healthy"])

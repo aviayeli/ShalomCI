@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock
 
 import httpx
@@ -255,6 +256,43 @@ async def test_octopart_token_request_logs_and_reraises_on_400(gatekeeper, monke
             await client.search_part("NE555")
 
     assert "invalid_client" in caplog.text
+
+
+@pytest.mark.parametrize("client_factory, token_url, search_payload", [
+    (
+        lambda gk: DigiKeyClient(client_id="id", client_secret="secret", gatekeeper=gk),
+        DigiKeyClient.TOKEN_URL,
+        {"Product": {"ManufacturerLeadWeeks": None}},
+    ),
+    (
+        lambda gk: OctopartClient(client_id="id", client_secret="secret", gatekeeper=gk),
+        OctopartClient.TOKEN_URL,
+        {"data": {"supSearch": {"results": []}}},
+    ),
+])
+async def test_token_single_flight_fetches_token_exactly_once(
+    gatekeeper, monkeypatch, client_factory, token_url, search_payload
+):
+    """מוודא נעילת single-flight: שתי קריאות search_part מקבילות מפעילות בקשת טוקן אחת בלבד -
+    בקשת הטוקן איטית (yield מלאכותי) כדי ששני הקורוטינים יחפפו על הנעילה, ורק אחד יבצע POST."""
+    client = client_factory(gatekeeper)
+    token_calls = 0
+
+    async def fake_request(method, url, **kwargs):
+        nonlocal token_calls
+        if url == token_url:
+            token_calls += 1
+            # השהיה מלאכותית: מוותרת על השליטה כדי ששתי הפניות יגיעו לנעילה בו-זמנית
+            for _ in range(3):
+                await asyncio.sleep(0)
+            return MockResponse({"access_token": "abc123", "expires_in": 600})
+        return MockResponse(search_payload)
+
+    monkeypatch.setattr(gatekeeper.client, "request", fake_request)
+
+    await asyncio.gather(client.search_part("PART_A"), client.search_part("PART_B"))
+
+    assert token_calls == 1, "נקודת הטוקן נקראה יותר מפעם אחת - נעילת single-flight נכשלה"
 
 
 async def test_octopart_search_cross_reference_is_same_query_as_search_part(gatekeeper, monkeypatch):

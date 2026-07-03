@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from dotenv import load_dotenv
@@ -79,34 +80,38 @@ class ShalomCI_SDK:
         return self.bom_parser.parse_file(file_path)
 
     async def enrich_components(self, bom_data: list):
-        """משיכת נתונים מהספקים ועדכון כל רכיב."""
+        """משיכת נתונים מהספקים ועדכון כל רכיב - כל הרכיבים מועשרים במקביל."""
         print(f"DEBUG: מתחיל העשרה ל-{len(bom_data)} רכיבים...")
+        tasks = []
         for comp in bom_data:
             mpn = comp.get("mpn")
             if not mpn: continue
-
-            # פנייה למנוע הצלבת הנתונים (שישתמש ב-API Key ששמנו ב-env)
-            # נניח שהמנוע מחזיר דיקשנרי עם המידע
-            data = await self.cross_ref.get_part_data(mpn)
-
-            if data:
-                comp["manufacturer"] = data.get("manufacturer", "Unknown")
-                comp["lifecycle_status"] = data.get("lifecycle", "Unknown")
-                # בהמשך נוסיף כאן לוגיקת חישוב ציון סיכון מורכבת
-                comp["risk_score"] = data.get("risk_score", 3)
-            else:
-                comp["manufacturer"] = "N/A"
-                comp["lifecycle_status"] = "N/A"
-                comp["risk_score"] = 5
-
-            for field, default in EXTRA_FIELD_DEFAULTS.items():
-                comp[field] = (data or {}).get(field, default)
-
-            # נתוני DigiKey/Octopart מוצגים side-by-side לצד Mouser - תמיד נשלפים בנפרד, גם אם
-            # ה-Mouser lookup נכשל, ולעולם אינם משפיעים על risk_score/lifecycle_status.
-            comp.update(await self.cross_ref.get_digikey_data(mpn))
-            comp.update(await self.cross_ref.get_octopart_data(mpn))
+            tasks.append(self._enrich_component(comp, mpn))
+        await asyncio.gather(*tasks)
         print("DEBUG: העשרה הסתיימה בהצלחה.")
+
+    async def _enrich_component(self, comp: dict, mpn: str):
+        """מעשיר רכיב בודד: שלוש פניות הספקים (Mouser/DigiKey/Octopart) רצות במקביל.
+        get_* מטפלים בשגיאות פנימית ומחזירים דיקשנרי ברירת-מחדל, לכן gather לא יזרוק."""
+        data, digikey, octopart = await asyncio.gather(
+            self.cross_ref.get_part_data(mpn),
+            self.cross_ref.get_digikey_data(mpn),
+            self.cross_ref.get_octopart_data(mpn),
+        )
+        if data:
+            comp["manufacturer"] = data.get("manufacturer", "Unknown")
+            comp["lifecycle_status"] = data.get("lifecycle", "Unknown")
+            comp["risk_score"] = data.get("risk_score", 3)
+        else:
+            comp["manufacturer"] = "N/A"
+            comp["lifecycle_status"] = "N/A"
+            comp["risk_score"] = 5
+
+        for field, default in EXTRA_FIELD_DEFAULTS.items():
+            comp[field] = (data or {}).get(field, default)
+        # נתוני DigiKey/Octopart מוצגים side-by-side לצד Mouser, לעולם אינם משפיעים על risk_score.
+        comp.update(digikey)
+        comp.update(octopart)
 
     async def evaluate_risks(self, enriched_data: list) -> dict:
         # ציון הסיכון מחושב תחילה על בסיס lifecycle_status באנגלית (מפתחות ה-RiskEngine
@@ -124,17 +129,20 @@ class ShalomCI_SDK:
         המערכת פותחת לו אוטומטית "תיק טיפול" בבסיס הנתונים לטיפול הנדסי.
         """
         for comp in evaluated_components:
-            score = comp.get("risk_score", 5)
             comp["alternatives"] = []
 
-            # חיפוש חלופות אך ורק אם הרכיב בסיכון מסוים (1, 2, או 3)
-            if score <= 3:
-                alts = await self.cross_ref.find_alternatives(comp.get("mpn", ""))
-                comp["alternatives"] = alts
+        # חיפוש חלופות אך ורק לרכיבים בסיכון (ציון 1/2/3) - כולם רצים במקביל
+        risky = [c for c in evaluated_components if c.get("risk_score", 5) <= 3]
+        alts_list = await asyncio.gather(
+            *[self.cross_ref.find_alternatives(c.get("mpn", "")) for c in risky]
+        )
+        for comp, alts in zip(risky, alts_list):
+            comp["alternatives"] = alts
 
-                # תנאי פתיחת קריאת Case
-                if score == 1 and not alts:
-                    await self.case_manager.open_case(comp.get("mpn", "Unknown"), project_name)
+        # פתיחת קריאות Case מתבצעת סדרתית (אחרי החיפוש) למניעת התנגשות כתיבה ב-SQLite
+        for comp in risky:
+            if comp.get("risk_score", 5) == 1 and not comp["alternatives"]:
+                await self.case_manager.open_case(comp.get("mpn", "Unknown"), project_name)
 
         return evaluated_components
 

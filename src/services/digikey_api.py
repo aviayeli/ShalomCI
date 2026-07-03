@@ -1,3 +1,4 @@
+import asyncio
 import time
 from typing import Any, Dict
 
@@ -23,28 +24,36 @@ class DigiKeyClient:
         self.gatekeeper = gatekeeper
         self._access_token = None
         self._token_expires_at = 0.0
+        # נעילת single-flight: מונעת מבערת בקשות מקבילה להפעיל N בקשות טוקן במקביל (stampede)
+        self._token_lock = asyncio.Lock()
 
     async def _get_access_token(self) -> str:
         """שולף Access Token דרך זרימת Client Credentials, וממחזר אותו עד לפקיעת התוקף."""
+        # מסלול מהיר: טוקן תקף מוחזר ללא נטילת הנעילה
         if self._access_token and time.monotonic() < self._token_expires_at:
             return self._access_token
 
-        response = await self.gatekeeper.request(
-            provider="digikey",
-            method="POST",
-            url=self.TOKEN_URL,
-            data={
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "grant_type": "client_credentials",
-            },
-            timeout=10.0,
-        )
-        payload = response.json()
-        self._access_token = payload["access_token"]
-        expires_in = payload.get("expires_in", 600)
-        self._token_expires_at = time.monotonic() + expires_in - self.TOKEN_EXPIRY_MARGIN_SECONDS
-        return self._access_token
+        # נעילה + בדיקה כפולה (double-checked): רק בקשה אחת בפועל מרעננת את הטוקן
+        async with self._token_lock:
+            if self._access_token and time.monotonic() < self._token_expires_at:
+                return self._access_token
+
+            response = await self.gatekeeper.request(
+                provider="digikey",
+                method="POST",
+                url=self.TOKEN_URL,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "grant_type": "client_credentials",
+                },
+                timeout=10.0,
+            )
+            payload = response.json()
+            self._access_token = payload["access_token"]
+            expires_in = payload.get("expires_in", 600)
+            self._token_expires_at = time.monotonic() + expires_in - self.TOKEN_EXPIRY_MARGIN_SECONDS
+            return self._access_token
 
     async def search_part(self, mpn: str) -> Dict[str, Any]:
         """מחפש פרטי רכיב לפי מק"ט יצרן (DigiKey Product Information V4 - ProductDetails)."""

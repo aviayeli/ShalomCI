@@ -9,6 +9,25 @@ STOCK_COLUMN_PREFIX = "מלאי זמין - "
 MPN_COLUMN = "מק\"ט"
 
 
+def summarize_risk(components: list) -> dict:
+    """
+    מסכם את התפלגות הסיכון של הרכיבים לספירות (פונקציה טהורה, ניתנת לבדיקה): total (סה"כ),
+    critical (ציון 1), warning (ציון 2-3), healthy (ציון 4-5). ציון לא ידוע (0 או מחוץ לטווח)
+    נספר ב-total בלבד ולא באף קטגוריית משנה - אותם ספים כמו צביעת התאים ואייקוני הסטטוס.
+    """
+    summary = {"total": 0, "critical": 0, "warning": 0, "healthy": 0}
+    for c in components:
+        summary["total"] += 1
+        score = c.get("risk_score", 0)
+        if score == 1:
+            summary["critical"] += 1
+        elif score in (2, 3):
+            summary["warning"] += 1
+        elif score in (4, 5):
+            summary["healthy"] += 1
+    return summary
+
+
 def status_icon(risk_score: int) -> str:
     """מחזיר אייקון נגישות התואם לרמת הסיכון; ציון לא ידוע (0) מסומן לבדיקה ידנית."""
     return STATUS_ICONS.get(risk_score, "❓")

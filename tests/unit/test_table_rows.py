@@ -1,6 +1,6 @@
 import pytest
 
-from src.gui.table_rows import build_rows, recommended_vendor, status_icon
+from src.gui.table_rows import build_rows, recommended_vendor, status_icon, summarize_risk
 
 
 @pytest.mark.parametrize("score,expected", [
@@ -119,3 +119,23 @@ def test_recommended_vendor_falls_back_to_highest_stock_without_any_price():
 def test_recommended_vendor_unknown_without_any_price_or_stock():
     """כשאין אף נתון מספק כלשהו, הספק המומלץ הוא 'לא ידוע' ולא קורס."""
     assert recommended_vendor({}) == "לא ידוע"
+
+
+def test_summarize_risk_buckets_scores_into_categories():
+    """מוודא ש-summarize_risk מסווג נכון ציונים לקטגוריות קריטי/אזהרה/תקין וסופר total."""
+    components = [
+        {"risk_score": 1}, {"risk_score": 2}, {"risk_score": 3},
+        {"risk_score": 4}, {"risk_score": 5},
+    ]
+    assert summarize_risk(components) == {"total": 5, "critical": 1, "warning": 2, "healthy": 2}
+
+
+def test_summarize_risk_empty_list_returns_zeros():
+    """מוודא שרשימה ריקה מחזירה אפסים בכל הקטגוריות ולא קורסת."""
+    assert summarize_risk([]) == {"total": 0, "critical": 0, "warning": 0, "healthy": 0}
+
+
+def test_summarize_risk_unknown_score_counted_only_in_total():
+    """מוודא שציון לא ידוע (0 / חסר) נספר ב-total בלבד ולא באף קטגוריית משנה."""
+    summary = summarize_risk([{"risk_score": 0}, {}])
+    assert summary == {"total": 2, "critical": 0, "warning": 0, "healthy": 0}

@@ -164,6 +164,34 @@ async def test_enrich_components_merges_digikey_fields_alongside_mouser(sdk):
     sdk.cross_ref.get_digikey_data.assert_awaited_once_with("NE555")
 
 
+async def test_enrich_components_fans_out_across_multiple_components(sdk):
+    """מוודא שהעשרת מספר רכיבים במקביל מעדכנת בכל רכיב את כל השדות הממוזגים (Mouser/DigiKey/Octopart)."""
+    await sdk.initialize()
+    sdk.cross_ref.get_part_data = AsyncMock(return_value={
+        "manufacturer": "TI", "lifecycle": "Active", "risk_score": 5,
+    })
+    sdk.cross_ref.get_digikey_data = AsyncMock(return_value={"digikey_stock_qty": 100.0})
+    sdk.cross_ref.get_octopart_data = AsyncMock(return_value={"octopart_stock_qty": 200.0})
+
+    components = [{"mpn": "PART_A"}, {"mpn": "PART_B"}, {"mpn": "PART_C"}]
+
+    await sdk.enrich_components(components)
+
+    for comp in components:
+        assert comp["manufacturer"] == "TI"
+        assert comp["lifecycle_status"] == "Active"
+        assert comp["risk_score"] == 5
+        # שדות ברירת מחדל מורחבים ממולאים גם כשה-Mouser lookup לא סיפק אותם
+        assert comp["lead_time"] == "זמן אספקה: לא ידוע"
+        # מיזוג שדות DigiKey/Octopart side-by-side על כל רכיב
+        assert comp["digikey_stock_qty"] == 100.0
+        assert comp["octopart_stock_qty"] == 200.0
+
+    assert sdk.cross_ref.get_part_data.await_count == 3
+    assert sdk.cross_ref.get_digikey_data.await_count == 3
+    assert sdk.cross_ref.get_octopart_data.await_count == 3
+
+
 def test_sdk_has_no_octopart_client_without_env_keys(sdk):
     """ללא OCTOPART_CLIENT_ID/SECRET בסביבה, ה-SDK לא אמור להקים קליינט Octopart (fallback לברירות מחדל)."""
     assert sdk.cross_ref.octopart_client is None

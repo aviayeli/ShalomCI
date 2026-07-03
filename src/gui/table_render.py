@@ -18,6 +18,13 @@ _END_ALIGNED_COLUMNS = [MPN_COLUMN] + [
 
 # CSS מקובע ל-Styler (scoped אוטומטית על ידי pandas לתחילית ה-id הייחודית של הטבלה, כך
 # שלא דולף/מתנגש עם שאר העמוד) - RTL לוגי (start/end), sticky header, וטיפוגרפיה נגישה.
+# צבעי תג ("pill") לכל ספק מומלץ - מראה "ממשלתי" נקי; slug נייטרלי ל"לא ידוע".
+_VENDOR_SLUGS = {"Mouser": "mouser", "DigiKey": "digikey", "Octopart": "octopart"}
+_VENDOR_BADGE_COLORS = {
+    "mouser": ("#0056B3", "#FFFFFF"), "digikey": ("#CC0000", "#FFFFFF"),
+    "octopart": ("#00857C", "#FFFFFF"), "unknown": ("#E3E8EF", "#475467"),
+}
+
 _TABLE_STYLES = [
     {"selector": "table", "props": [
         ("direction", "rtl"), ("width", "100%"), ("border-collapse", "collapse"),
@@ -29,7 +36,22 @@ _TABLE_STYLES = [
         ("z-index", "1000"), ("padding", "10px"), ("text-align", "start"),
         ("box-shadow", "0 2px 2px -1px rgba(0,0,0,0.4)"),
     ]},
-    {"selector": "td", "props": [("border", "1px solid #ddd"), ("padding", "8px"), ("text-align", "start")]},
+    # גבולות אופקיים בלבד (border-bottom) במקום רשת מלאה - מראה נקי יותר; פסים לסירוגין
+    # (zebra) והדגשת שורה במעבר עכבר (hover) לשיפור סריקה ויזואלית. תאי ציון-סיכון שומרים
+    # על צבעם: ה-map מזריק background-color inline הגובר על כללי zebra/hover (ללא !important).
+    {"selector": "td", "props": [
+        ("border", "none"), ("border-bottom", "1px solid #E3E8EF"), ("padding", "8px"), ("text-align", "start"),
+    ]},
+    {"selector": "tbody tr:nth-child(even) td", "props": [("background-color", "#F6F8FB")]},
+    {"selector": "tbody tr:hover td", "props": [("background-color", "#EEF4FB")]},
+    {"selector": ".vendor-badge", "props": [
+        ("display", "inline-block"), ("padding", "2px 12px"), ("border-radius", "999px"),
+        ("font-size", "0.85rem"), ("font-weight", "600"), ("white-space", "nowrap"),
+    ]},
+    *[
+        {"selector": f".vendor-badge-{slug}", "props": [("background-color", bg), ("color", fg)]}
+        for slug, (bg, fg) in _VENDOR_BADGE_COLORS.items()
+    ],
 ]
 
 
@@ -45,6 +67,14 @@ def _mpn_bidi(value) -> str:
     """עוטף מק"ט ב-<bdi> כדי שמחרוזת אלפאנומרית/לטינית לא תתהפך/תישבר בהקשר RTL. ה-HTML
     מוברח ידנית (html.escape) כי escape="html" הכללי של Styler היה בורח גם את ה-<bdi> עצמו."""
     return f"<bdi>{html.escape(str(value))}</bdi>"
+
+
+def _vendor_badge(value) -> str:
+    """עוטף את הספק המומלץ בתג ("pill") מעוצב. ה-HTML מוברח ידנית (html.escape) בדיוק כמו
+    ב-_mpn_bidi, כי format ללא escape="html" אינו מבריח את הפלט שלנו - קריטי למניעת XSS."""
+    text = str(value)
+    slug = _VENDOR_SLUGS.get(text, "unknown")
+    return f'<span class="vendor-badge vendor-badge-{slug}">{html.escape(text)}</span>'
 
 
 def _risk_color(value) -> str:
@@ -77,6 +107,7 @@ def render_table(df: pd.DataFrame) -> None:  # pragma: no cover - חיווט Str
         .format(escape="html")
         .format(formatter=formatters, escape="html")
         .format(_mpn_bidi, subset=[MPN_COLUMN])
+        .format(_vendor_badge, subset=["ספק מומלץ"])
         .map(_risk_color, subset=["ציון סיכון"])
         .set_properties(subset=_END_ALIGNED_COLUMNS, **{"text-align": "end !important"})
         .set_table_styles(_TABLE_STYLES)
@@ -84,5 +115,14 @@ def render_table(df: pd.DataFrame) -> None:  # pragma: no cover - חיווט Str
         .to_html()
         .replace("<th ", '<th scope="col" ')
     )
-    full_html = f'<div role="region" aria-label="טבלת נתוני רכיבים מועשרים" tabindex="0">{table_html}</div>'
+    # מיכל גלילה: הופך את ה-thead ה-sticky ל"דביק" בתוך האזור עצמו (ולא ביחס לחלון), ומעניק
+    # מסגרת/פינות מעוגלות/צל עדין למראה "ממשלתי" נקי. שומר על role/aria-label/tabindex לנגישות.
+    container_style = (
+        "max-height:600px;overflow-y:auto;border:1px solid #E3E8EF;"
+        "border-radius:8px;box-shadow:0 1px 3px rgba(16,24,40,.1);"
+    )
+    full_html = (
+        f'<div role="region" aria-label="טבלת נתוני רכיבים מועשרים" tabindex="0" '
+        f'style="{container_style}">{table_html}</div>'
+    )
     st.html(full_html)
