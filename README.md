@@ -21,7 +21,7 @@
 
 - **שכבת SDK מרכזית (`src/sdk.py`):** נקודת הכניסה היחידה לכל הלוגיקה העסקית. ה-CLI וה-GUI הם שכבות תצוגה (Proxy) בלבד וללא לוגיקה עצמאית משלהם.
 - **API Gatekeeper (`src/services/gatekeeper.py`):** כל קריאה חיצונית (Mouser/Octopart/DigiKey) עוברת דרך שומר סף מרכזי המנהל תורים אסינכרוניים, מגבלות קצב (Token Bucket, לדוגמה עד 30 בקשות/דקה מול Mouser) ומנגנון Retries חכם עם Exponential Backoff — כדי למנוע חסימות (429) מצד הספקים. אין קריאות רשת ישירות עוקפות בשום מקום בקוד.
-- **טבלת השוואת ספקים ב-`st.dataframe` הטבעי:** `src/gui/table_render.py` מרנדר באמצעות `st.dataframe` + `column_config` (`ProgressColumn`/`NumberColumn`) - במתכוון **לא** `st_aggrid` או רכיב JS חיצוני אחר, כדי להימנע מ-timeouts ב-WebSocket וכשלי רינדור iframe. עמודות מחיר/מלאי מוצגות בנפרד לכל אחד משלושת הספקים (Mouser/DigiKey/Octopart), עם עמודת "ספק מומלץ" ראשונה המחשבת אוטומטית את הספק הזול/הזמין ביותר. מחזור חיים וציון סיכון מוצגים פעם אחת בלבד (מקור: Mouser).
+- **טבלת השוואת ספקים כ-HTML טהור (RTL מלא):** `src/gui/table_render.py` בונה `pandas.Styler` (עיצוב, צביעת סיכון, RTL/sticky header) ומרנדר אותו כ-HTML דרך `st.html()` - במתכוון **לא** `st_aggrid`/רכיב JS חיצוני (בעיות WebSocket) וגם **לא** `st.dataframe` (ה-grid הפנימי שלו מצויר על HTML canvas ושובר RTL עברי לחלוטין) ולא `st.iframe`/`components.html` המיושן. עמודות מחיר/מלאי מוצגות בנפרד לכל אחד משלושת הספקים (Mouser/DigiKey/Octopart), עם עמודת "ספק מומלץ" ראשונה המחשבת אוטומטית את הספק הזול/הזמין ביותר. מחזור חיים וציון סיכון מוצגים פעם אחת בלבד (מקור: Mouser).
 - לפירוט מלא (כולל שכבת ה-Gatekeeper, ניהול המקרים, ותקן IEC 62402:2019) ראו [`docs/PLAN.md`](docs/PLAN.md) ו-[`docs/PRD.md`](docs/PRD.md).
 
 ## דרישות מוקדמות (Ubuntu / Linux / Windows)
