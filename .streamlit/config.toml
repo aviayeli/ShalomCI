@@ -6,3 +6,12 @@
 headless = true
 enableCORS = false
 enableXsrfProtection = false
+
+# ערכת הנושא של מערכת העיצוב ShalomCI (Claude Design) - תואמת לטוקנים ב-DESIGN_CSS
+# (--sci-primary/--sci-bg/--sci-surface/--sci-text) שמוזרקים ב-src/gui/ui_helpers.py.
+[theme]
+primaryColor = "#2F6BDB"
+backgroundColor = "#F4F6F9"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1B2431"
+font = "sans serif"

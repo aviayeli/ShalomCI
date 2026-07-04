@@ -19,6 +19,7 @@ from src.gui.table_controls import available_statuses, filter_and_sort, sort_opt
 from src.gui.table_rows import build_rows, summarize_risk
 from src.gui.table_view import render_table_view
 from src.gui.ui_helpers import (
+    DESIGN_CSS,
     RTL_CSS,
     api_keys_fingerprint,
     render_api_keys_sidebar,
@@ -62,8 +63,9 @@ def cached_analysis(file_bytes: bytes, filename: str, keys_fingerprint: str):  #
 def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלוגיקה הטהורה נבדקת ב-table_rows/run_analysis
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
+    # DESIGN_CSS אחרי RTL_CSS בכוונה: באותה ספציפיות, הגיליון המאוחר גובר (רקע .stApp, טוקנים).
+    st.markdown(DESIGN_CSS, unsafe_allow_html=True)
     inject_accessibility_widget()
-    # סרגל הצד למפתחות API מרונדר לפני כפתור הניתוח כדי שערכים שהוזנו ייכתבו ל-os.environ בזמן.
     render_api_keys_sidebar()
     st.title("⚙️ ShalomCI — אינטליגנציית רכיבים")
     st.caption("ניהול מחזור חיי רכיבים אלקטרוניים · השוואת מלאי, תמחור וסיכון אספקה בזמן אמת")
