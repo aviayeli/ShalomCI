@@ -14,6 +14,7 @@ if project_root not in sys.path:
 
 from src.core.cross_ref import NETWORK_ERROR_STATUS
 from src.gui.accessibility_widget import inject_accessibility_widget
+from src.gui.disclaimers import render_disclaimers, render_footer
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_rows import build_rows, summarize_risk
 from src.gui.table_view import render_table_view
@@ -58,6 +59,8 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     st.caption("ניהול מחזור חיי רכיבים אלקטרוניים · השוואת מלאי, תמחור וסיכון אספקה בזמן אמת")
     # ההסבר מתקפל: פתוח בכניסה הראשונה, מכווץ אוטומטית לאחר שיש תוצאות.
     render_welcome_header("result" not in st.session_state)
+    # גילויי נאות (מגבלות API ותנאי שימוש) - expander מכווץ מיד מתחת להסבר הראשי.
+    render_disclaimers()
 
     # תווית מפורשת אחת מעל הווידג'ט + label_visibility="collapsed": כך תווית הווידג'ט
     # המובנית אינה יכולה לשכפל את הכיתוב, ונשארת כותרת עברית יחידה וברורה.
@@ -76,6 +79,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
                 st.error(f"אירעה שגיאה בתהליך הניתוח: {e}. ודא שמפתחות ה-API מוגדרים כראוי בקובץ ה-env ונסה שוב.")
 
     if "result" not in st.session_state:
+        render_footer()
         return
     score, data = st.session_state["result"]
 
@@ -111,6 +115,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
         file_name="shalomci_report.csv", mime="text/csv"
     )
     render_table_view(df)
+    render_footer()
 
 
 if __name__ == "__main__":
