@@ -6,7 +6,7 @@ from src.gui.table_rows import MPN_COLUMN
 
 # עמודות מפורמטות כטקסט (למשל "זמן אספקה: 63 ימים") שדורשות שליפת מספר למיון נכון - עמודות
 # המחיר/מלאי כבר מספריות (float, ראו table_rows.py) וממוינות נכון באופן טבעי ללא צורך בכך.
-_NUMERIC_TEXT_COLUMNS = {"זמן אספקה"}
+_NUMERIC_TEXT_COLUMNS = {"אספקה - Mouser", "אספקה - DigiKey", "אספקה - Octopart"}
 _NUMBER_RE = re.compile(r"[\d.,]+")
 
 

@@ -45,11 +45,11 @@ def test_build_rows_defaults_for_missing_fields():
     assert rows[0]["ציון סיכון"] == 0
     assert rows[0]["ספק מומלץ"] == "לא ידוע"
     for label in ("Mouser", "DigiKey", "Octopart"):
-        assert rows[0][f"מחיר (₪) - {label}"] is None
-        assert rows[0][f"מלאי זמין - {label}"] is None
-    assert rows[0]["חלופה מוצעת (Mouser)"] == "אין"
-    assert rows[0]["זמן אספקה (DigiKey)"] == "זמן אספקה: לא ידוע"
-    assert rows[0]["זמן אספקה (Octopart)"] == "זמן אספקה: לא ידוע"
+        assert rows[0][f"מחיר - {label}"] is None
+        assert rows[0][f"מלאי - {label}"] is None
+    assert rows[0]["חלופה מוצעת"] == "אין"
+    assert rows[0]["אספקה - DigiKey"] == "זמן אספקה: לא ידוע"
+    assert rows[0]["אספקה - Octopart"] == "זמן אספקה: לא ידוע"
 
 
 def test_build_rows_includes_extended_mouser_fields():
@@ -66,10 +66,10 @@ def test_build_rows_includes_extended_mouser_fields():
 
     rows = build_rows(components)
 
-    assert rows[0]["מלאי זמין - Mouser"] == 24755.0
-    assert rows[0]["מחיר (₪) - Mouser"] == 1.85
-    assert rows[0]["זמן אספקה"] == "זמן אספקה: 63 ימים"
-    assert rows[0]["חלופה מוצעת (Mouser)"] == "NE555DR-ALT"
+    assert rows[0]["מלאי - Mouser"] == 24755.0
+    assert rows[0]["מחיר - Mouser"] == 1.85
+    assert rows[0]["אספקה - Mouser"] == "זמן אספקה: 63 ימים"
+    assert rows[0]["חלופה מוצעת"] == "NE555DR-ALT"
     assert rows[0]["תאימות RoHS"] == "תואם RoHS"
     assert rows[0]["צורת אריזה"] == "Cut Tape"
 
@@ -87,13 +87,13 @@ def test_build_rows_includes_digikey_and_octopart_price_stock_side_by_side_with_
 
     rows = build_rows(components)
 
-    assert rows[0]["מלאי זמין - Mouser"] == 24755.0
-    assert rows[0]["מלאי זמין - DigiKey"] == 1200.0
-    assert rows[0]["מחיר (₪) - DigiKey"] == 1.2
-    assert rows[0]["זמן אספקה (DigiKey)"] == "זמן אספקה: 4 שבועות"
-    assert rows[0]["מלאי זמין - Octopart"] == 3400.0
-    assert rows[0]["מחיר (₪) - Octopart"] == 0.95
-    assert rows[0]["זמן אספקה (Octopart)"] == "זמן אספקה: 12 ימים"
+    assert rows[0]["מלאי - Mouser"] == 24755.0
+    assert rows[0]["מלאי - DigiKey"] == 1200.0
+    assert rows[0]["מחיר - DigiKey"] == 1.2
+    assert rows[0]["אספקה - DigiKey"] == "זמן אספקה: 4 שבועות"
+    assert rows[0]["מלאי - Octopart"] == 3400.0
+    assert rows[0]["מחיר - Octopart"] == 0.95
+    assert rows[0]["אספקה - Octopart"] == "זמן אספקה: 12 ימים"
     assert "מחזור חיים (DigiKey)" not in rows[0]
     assert "מחזור חיים (Octopart)" not in rows[0]
 

@@ -4,8 +4,8 @@ STATUS_ICONS = {1: "⛔", 2: "⚠️", 3: "⚠️", 4: "✅", 5: "✅"}
 # שלושת הספקים המושווים side-by-side (מפתח בעברית לתצוגה -> קידומת שדה ב-comp). מחזור
 # חיים/ציון סיכון מוצגים פעם אחת בלבד (מקור: Mouser בלבד) - ראו PRD 4.3/PLAN סעיף 6.
 PRICE_STOCK_VENDORS = {"Mouser": "mouser", "DigiKey": "digikey", "Octopart": "octopart"}
-PRICE_COLUMN_PREFIX = "מחיר (₪) - "
-STOCK_COLUMN_PREFIX = "מלאי זמין - "
+PRICE_COLUMN_PREFIX = "מחיר - "
+STOCK_COLUMN_PREFIX = "מלאי - "
 MPN_COLUMN = "מק\"ט"
 
 
@@ -53,10 +53,13 @@ def recommended_vendor(c: dict) -> str:
 
 
 def vendor_price_stock_columns(c: dict) -> dict:
-    """בונה עמודות מחיר/מלאי גולמיות (מספריות) לכל ספק, מתוך שדות comp[f'{prefix}_*']."""
+    """בונה עמודות מחיר/מלאי גולמיות (מספריות) לכל ספק, מתוך שדות comp[f'{prefix}_*'].
+    קיבוץ לפי מדד (סדר ה-dict = סדר התצוגה): כל 3 המחירים צמודים, אחריהם כל 3 המלאים -
+    לסריקה השוואתית של מדד אחד לרוחב הספקים (במקום זוגות מחיר+מלאי לסירוגין)."""
     cols = {}
     for label, prefix in PRICE_STOCK_VENDORS.items():
         cols[f"{PRICE_COLUMN_PREFIX}{label}"] = c.get(f"{prefix}_price_value")
+    for label, prefix in PRICE_STOCK_VENDORS.items():
         cols[f"{STOCK_COLUMN_PREFIX}{label}"] = c.get(f"{prefix}_stock_qty")
     return cols
 
@@ -66,17 +69,20 @@ def build_rows(components: list) -> list:
     rows = []
     for c in components:
         score = c.get("risk_score", 0)
+        # סדר המפתחות = סדר העמודות (RTL, מק"ט הימני ביותר): תקציר החלטה (מק"ט → יצרן →
+        # סטטוס → ציון סיכון → ספק מומלץ), אחריו בלוקי המדדים (מחירים → מלאים → אספקה),
+        # ובסוף (שמאל) הזנב הארוך (חלופה מוצעת / RoHS / אריזה / חלופות).
         rows.append({
-            "ספק מומלץ": recommended_vendor(c),
             MPN_COLUMN: c.get("mpn", "N/A"),
             "יצרן": c.get("manufacturer", "N/A"),
             "סטטוס": f"{status_icon(score)} {c.get('lifecycle_status', 'N/A')}",
             "ציון סיכון": score,
+            "ספק מומלץ": recommended_vendor(c),
             **vendor_price_stock_columns(c),
-            "זמן אספקה": c.get("lead_time", "זמן אספקה: לא ידוע"),
-            "זמן אספקה (DigiKey)": c.get("digikey_lead_time", "זמן אספקה: לא ידוע"),
-            "זמן אספקה (Octopart)": c.get("octopart_lead_time", "זמן אספקה: לא ידוע"),
-            "חלופה מוצעת (Mouser)": c.get("suggested_replacement", "אין"),
+            "אספקה - Mouser": c.get("lead_time", "זמן אספקה: לא ידוע"),
+            "אספקה - DigiKey": c.get("digikey_lead_time", "זמן אספקה: לא ידוע"),
+            "אספקה - Octopart": c.get("octopart_lead_time", "זמן אספקה: לא ידוע"),
+            "חלופה מוצעת": c.get("suggested_replacement", "אין"),
             "תאימות RoHS": c.get("rohs_status", "לא ידוע"),
             "צורת אריזה": c.get("packaging", "לא ידוע"),
             "חלופות": ", ".join([a.get("mpn", "") for a in c.get("alternatives", [])]) if c.get(

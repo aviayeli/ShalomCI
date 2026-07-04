@@ -12,9 +12,17 @@ _FONT_STACK = "'Assistant', 'Heebo', 'Noto Sans Hebrew', 'Segoe UI', sans-serif"
 # "פרדוקס היישור": הטבלה כולה RTL, אך מספרים (מחיר/מלאי) ומק"ט (אלפאנומרי/לטיני בדרך
 # כלל) מיושרים end (שמאל) כדי שהספרות יתלכדו טור-מול-טור בין שורות להשוואה נוחה; טקסט
 # עברי וכל כותרות העמודות מיושרים start (ימין) כברירת מחדל דרך _TABLE_STYLES.
-_END_ALIGNED_COLUMNS = [MPN_COLUMN] + [
-    f"{prefix}{label}" for prefix in (PRICE_COLUMN_PREFIX, STOCK_COLUMN_PREFIX) for label in PRICE_STOCK_VENDORS
-]
+_PRICE_COLUMNS = [f"{PRICE_COLUMN_PREFIX}{label}" for label in PRICE_STOCK_VENDORS]
+_STOCK_COLUMNS = [f"{STOCK_COLUMN_PREFIX}{label}" for label in PRICE_STOCK_VENDORS]
+_END_ALIGNED_COLUMNS = [MPN_COLUMN] + _PRICE_COLUMNS + _STOCK_COLUMNS
+
+# המלצות ויזואליות (אפיון סעיף 5): nowrap על עמודות מספריות (התלכדות ספרות טור-מול-טור);
+# מפריד border בתחילת כל בלוק מדד (תיחום 3 בלוקי ההשוואה); גלישת זנב ארוך (רשימות MPN)
+# לשורה במקום מתיחת הטבלה לרוחב; רוחב מינימלי למק"ט/יצרן למניעת קריסת עמודה.
+_NOWRAP_COLUMNS = _PRICE_COLUMNS + _STOCK_COLUMNS
+_BLOCK_START_COLUMNS = [f"{PRICE_COLUMN_PREFIX}Mouser", f"{STOCK_COLUMN_PREFIX}Mouser", "אספקה - Mouser"]
+_MIN_WIDTH_COLUMNS = [MPN_COLUMN, "יצרן"]
+_WRAP_COLUMNS = ["חלופה מוצעת", "חלופות"]
 
 # CSS מקובע ל-Styler (scoped אוטומטית על ידי pandas לתחילית ה-id הייחודית של הטבלה, כך
 # שלא דולף/מתנגש עם שאר העמוד) - RTL לוגי (start/end), sticky header, וטיפוגרפיה נגישה.
@@ -110,6 +118,13 @@ def render_table(df: pd.DataFrame) -> None:  # pragma: no cover - חיווט Str
         .format(_vendor_badge, subset=["ספק מומלץ"])
         .map(_risk_color, subset=["ציון סיכון"])
         .set_properties(subset=_END_ALIGNED_COLUMNS, **{"text-align": "end !important"})
+        .set_properties(subset=_NOWRAP_COLUMNS, **{"white-space": "nowrap"})
+        .set_properties(subset=_BLOCK_START_COLUMNS, **{"border-inline-start": "2px solid #D0D7E2"})
+        .set_properties(subset=_MIN_WIDTH_COLUMNS, **{"min-width": "120px"})
+        .set_properties(
+            subset=_WRAP_COLUMNS,
+            **{"white-space": "normal", "word-break": "break-word", "max-width": "220px"},
+        )
         .set_table_styles(_TABLE_STYLES)
         .set_table_attributes('role="table"')
         .to_html()

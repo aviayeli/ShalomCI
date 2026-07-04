@@ -17,39 +17,8 @@ from src.gui.accessibility_widget import inject_accessibility_widget
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_render import render_table
 from src.gui.table_rows import build_rows, summarize_risk
-from src.gui.ui_helpers import render_summary_metrics, render_welcome_header
+from src.gui.ui_helpers import RTL_CSS, render_summary_metrics, render_welcome_header
 from src.sdk import ShalomCI_SDK
-
-RISK_SCORE_HELP = (
-    "This score represents the overall supply chain and obsolescence risk of the BOM. "
-    "It is calculated by factoring in the Lifecycle Status (e.g., EOL, NRND), current "
-    "stock availability, and lead times across all components."
-)
-
-# CSS גלובלי: RTL לוגי (start/end, לא right/left קשיח), טיפוגרפיה נגישה מותאמת עברית, ורקע.
-# הטבלה עצמה (table_render.py, pandas.Styler -> st.html) מרונדרת ב-DOM הראשי, לכן ה-CSS
-# הזה משפיע עליה גם כן - אך ל-Styler יש CSS ממוקד משלו (scoped לתחילית ה-id הייחודי שלו,
-# עם !important) שגובר על הכללים הגלובליים כאן היכן שהם מתנגשים (למשל יישור עמודות מספריות).
-RTL_CSS = """
-<style>
-    * {
-        direction: rtl !important;
-        text-align: start !important;
-        font-family: 'Assistant', 'Heebo', 'Noto Sans Hebrew', 'Segoe UI', sans-serif !important;
-        font-size: 1rem;
-        line-height: 1.5;
-        font-style: normal !important;
-        letter-spacing: normal !important;
-    }
-    .stApp { background-color: #F8F9FA; }
-    /* מטרות מגע נגישות (WCAG) - מילים בעברית ("הורד" לעומת "Download") מקצרות כפתורים
-       בברירת המחדל של Streamlit עד כדי חוסר שימושיות במגע; גובה/ריפוד מינימליים מתקנים זאת. */
-    button {
-        min-height: 48px !important;
-        padding-inline: 32px !important;
-    }
-</style>
-"""
 
 
 async def run_analysis(file_path: str, filename: str):
@@ -85,19 +54,26 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
     inject_accessibility_widget()
-    st.title("⚙️ ShalomCI - אינטליגנציית רכיבים")
-    render_welcome_header()
+    st.title("⚙️ ShalomCI — אינטליגנציית רכיבים")
+    st.caption("ניהול מחזור חיי רכיבים אלקטרוניים · השוואת מלאי, תמחור וסיכון אספקה בזמן אמת")
+    # ההסבר מתקפל: פתוח בכניסה הראשונה, מכווץ אוטומטית לאחר שיש תוצאות.
+    render_welcome_header("result" not in st.session_state)
 
-    uploaded_file = st.file_uploader("העלה עץ מוצר (BOM)", type=["xlsx", "csv"])
-    col_run, col_download = st.columns(2)
+    # תווית מפורשת אחת מעל הווידג'ט + label_visibility="collapsed": כך תווית הווידג'ט
+    # המובנית אינה יכולה לשכפל את הכיתוב, ונשארת כותרת עברית יחידה וברורה.
+    st.markdown("**העלה קובץ עץ מוצר (BOM)**")
+    uploaded_file = st.file_uploader(
+        "העלה קובץ עץ מוצר (BOM)", type=["xlsx", "csv"], label_visibility="collapsed",
+        help="פורמטים נתמכים: Excel‏ (xlsx) או CSV. הקובץ חייב לכלול עמודה בשם MPN.",
+    )
 
-    if col_run.button("🚀 הפעל ניתוח", disabled=not uploaded_file):
-        with st.spinner("טוען נתונים ושואב מידע מ-Mouser, DigiKey ו-Octopart, אנא המתן..."):
+    if st.button("🚀 הפעל ניתוח", disabled=not uploaded_file):
+        with st.spinner("מנתח את עץ המוצר ושואב נתונים מ-Mouser, DigiKey ו-Octopart, אנא המתן…"):
             try:
                 st.session_state["result"] = cached_analysis(uploaded_file.getvalue(), uploaded_file.name)
             except Exception as e:
                 st.session_state.pop("result", None)
-                st.error(f"שגיאה בתהליך: {e}. וודא שמפתחות ה-API תקינים ב-env.")
+                st.error(f"אירעה שגיאה בתהליך הניתוח: {e}. ודא שמפתחות ה-API מוגדרים כראוי בקובץ ה-env ונסה שוב.")
 
     if "result" not in st.session_state:
         return
@@ -107,26 +83,33 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     if any(c.get("manufacturer") == NETWORK_ERROR_STATUS for c in data):
         st.warning(
             "⚠️ שגיאת רשת בפנייה ל-Mouser API (לאחר מספר ניסיונות חוזרים). "
-            "מוצגים נתוני ברירת מחדל עבור חלק מהרכיבים - נסו שוב מאוחר יותר."
+            "מוצגים נתוני ברירת מחדל עבור חלק מהרכיבים — נסו שוב מאוחר יותר."
         )
 
     df = pd.DataFrame(build_rows(data))
 
-    render_summary_metrics(summarize_risk(data))
+    render_summary_metrics(summarize_risk(data), score)
+
+    # שורת כותרת התוצאות: הכותרת בימין, מציין מקום לכפתור ההורדה בשמאל. הכפתור עצמו
+    # מרונדר אחרי הסינון (למטה) כדי לייצא את ה-DataFrame המסונן/המוצג בפועל.
+    col_title, col_download = st.columns([4, 1])
+    col_title.subheader("תוצאות הניתוח")
+
     st.subheader("🔍 סינון ומיון")
     col_search, col_status, col_sort, col_order = st.columns([2, 2, 2, 1])
-    search = col_search.text_input("חיפוש (מק\"ט / יצרן)")
-    statuses = col_status.multiselect("סטטוס מחזור חיים", options=available_statuses(df))
+    search = col_search.text_input("חיפוש לפי מק\"ט או יצרן")
+    statuses = col_status.multiselect(
+        "סטטוס מחזור חיים", options=available_statuses(df), placeholder="בחרו סטטוסים"
+    )
     sort_by = col_sort.selectbox("מיין לפי", options=sort_options(df))
-    ascending = col_order.radio("סדר", options=["עולה", "יורד"]) == "עולה"
+    ascending = col_order.radio("סדר מיון", options=["עולה", "יורד"]) == "עולה"
     df = filter_and_sort(df, search, statuses, sort_by, ascending)
 
     # utf-8-sig מוסיף BOM כך ש-Excel יזהה נכון קידוד עברי בפתיחת קובץ ה-CSV
     col_download.download_button(
-        "הורד דוח", data=df.to_csv(index=False).encode("utf-8-sig"),
+        "📥 הורד דוח (CSV)", data=df.to_csv(index=False).encode("utf-8-sig"),
         file_name="shalomci_report.csv", mime="text/csv"
     )
-    st.metric("ציון סיכון כללי (Risk Score)", f"{score} / 5.0", help=RISK_SCORE_HELP)
     render_table(df)
 
 

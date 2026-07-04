@@ -1,8 +1,23 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from streamlit.testing.v1 import AppTest
 
 from src.gui.app import run_analysis
+
+
+def test_app_renders_single_caption_uploader_without_exception():
+    """מריץ את האפליקציה דרך AppTest: אין חריגה, מזריק CSS מתקן, ומרנדר את מעלה הקובץ."""
+    at = AppTest.from_file("src/gui/app.py").run()
+
+    assert not at.exception
+    # ה-CSS המתקן (חריגת פונט האייקונים) הוזרק - זהו התיקון הדטרמיניסטי לכיתוב הכפול.
+    css_blocks = " ".join(md.value for md in at.markdown)
+    assert '[data-testid="stIconMaterial"]' in css_blocks
+    assert '[data-testid="stFileUploaderDropzoneInstructions"]::after' in css_blocks
+    # אלמנט מעלה הקובץ קיים, עם תווית מוסתרת (כותרת עברית יחידה מוצגת בנפרד).
+    assert len(at.get("file_uploader")) == 1
+    assert "COLLAPSED" in str(at.get("file_uploader")[0].label_visibility)
 
 
 @pytest.mark.asyncio
