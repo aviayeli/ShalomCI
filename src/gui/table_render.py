@@ -1,8 +1,8 @@
-import html
-
 import pandas as pd
 import streamlit as st
 
+from src.gui.table_format import (VENDOR_BADGE_COLORS, latin_ltr, mpn_bidi, price_text,
+                                  risk_color, stock_text, vendor_badge)
 from src.gui.table_rows import (LEAD_TIME_COLUMN_PREFIX, MPN_COLUMN, PRICE_COLUMN_PREFIX,
                                 PRICE_STOCK_VENDORS, STOCK_COLUMN_PREFIX, vendor_columns)
 
@@ -34,15 +34,9 @@ _WRAP_COLUMNS = ["חלופה מוצעת", "חלופות"]
 
 # CSS מקובע ל-Styler (scoped אוטומטית על ידי pandas לתחילית ה-id הייחודית של הטבלה, כך
 # שלא דולף/מתנגש עם שאר העמוד) - RTL לוגי (start/end), sticky header, וטיפוגרפיה נגישה.
-# צבעי תג ("pill") לכל ספק מומלץ - מראה "ממשלתי" נקי; slug נייטרלי ל"לא ידוע".
 # תכלת עדין להדגשת עמודות ספק נבחר: inline (גובר על zebra/hover כמו צביעת הסיכון), נשמרת
 # ניגודיות WCAG קריאה מול טקסט התא הכהה גם על שורות ה-zebra.
 _HIGHLIGHT_TINT = "#DBEAFE"
-_VENDOR_SLUGS = {"Mouser": "mouser", "DigiKey": "digikey", "Octopart": "octopart"}
-_VENDOR_BADGE_COLORS = {
-    "mouser": ("#0056B3", "#FFFFFF"), "digikey": ("#CC0000", "#FFFFFF"),
-    "octopart": ("#00857C", "#FFFFFF"), "unknown": ("#E3E8EF", "#475467"),
-}
 
 _TABLE_STYLES = [
     {"selector": "table", "props": [
@@ -70,61 +64,9 @@ _TABLE_STYLES = [
     ]},
     *[
         {"selector": f".vendor-badge-{slug}", "props": [("background-color", bg), ("color", fg)]}
-        for slug, (bg, fg) in _VENDOR_BADGE_COLORS.items()
+        for slug, (bg, fg) in VENDOR_BADGE_COLORS.items()
     ],
 ]
-
-
-def _ltr(text: str) -> str:
-    """עוטף טקסט (שכבר הוברח!) ב-<bdo dir="ltr"> - בידוד Bidi כפוי לתוכן לטיני/מספרי בהקשר
-    RTL, לפי מערכת העיצוב (DESIGN.md סעיף 3). ה-CSS הגלובלי (DESIGN_CSS) קובע ל-bdo
-    unicode-bidi: isolate, כך שהעטיפה מבודדת את הרצף מסביבתו העברית בלי להפוך את תוכנו."""
-    return f'<bdo dir="ltr">{text}</bdo>'
-
-
-def _price_text(value) -> str:
-    """מעצב מחיר: ערך מספרי נעטף ב-bdo (רצף "₪ 1,234.56" נשאר בסדר קריאה LTR); המחרוזת
-    העברית "לא זמין" נשארת חשופה - כפיית LTR על עברית הייתה מציגה אותה הפוך."""
-    return "לא זמין" if pd.isna(value) else _ltr(f"₪ {value:,.2f}")
-
-
-def _stock_text(value) -> str:
-    return "לא ידוע" if pd.isna(value) else _ltr(f"{value:,.0f}")
-
-
-def _mpn_bidi(value) -> str:
-    """עוטף מק"ט ב-<bdo dir="ltr"> כדי שמחרוזת אלפאנומרית/לטינית לא תתהפך/תישבר בהקשר RTL
-    (מערכת העיצוב מחייבת bdo, בעבר <bdi>). ה-HTML מוברח ידנית (html.escape) כי escape="html"
-    הכללי של Styler היה בורח גם את התגית עצמה."""
-    return _ltr(html.escape(str(value)))
-
-
-_HEBREW_CHARS = set(map(chr, range(0x0590, 0x0600)))
-
-
-def _latin_ltr(value) -> str:
-    """מבריח ערך טקסטואלי מעורב (זמני אספקה/תאריכים לועזיים/רשימות מק"ט חלופיות) ועוטף אותו
-    ב-<bdo dir="ltr"> רק אם אין בו אף תו עברי - טקסט עברי ("זמן אספקה: לא ידוע") שייכפה
-    ל-LTR היה מתרנדר הפוך, ולכן נשאר חשוף בהקשר ה-RTL הטבעי."""
-    text = str(value)
-    escaped = html.escape(text)
-    return escaped if _HEBREW_CHARS.intersection(text) else _ltr(escaped)
-
-
-def _vendor_badge(value) -> str:
-    """עוטף את הספק המומלץ בתג ("pill") מעוצב. ה-HTML מוברח ידנית (html.escape) בדיוק כמו
-    ב-_mpn_bidi, כי format ללא escape="html" אינו מבריח את הפלט שלנו - קריטי למניעת XSS."""
-    text = str(value)
-    slug = _VENDOR_SLUGS.get(text, "unknown")
-    return f'<span class="vendor-badge vendor-badge-{slug}">{html.escape(text)}</span>'
-
-
-def _risk_color(value) -> str:
-    if value == 1:
-        return "background-color: #FFCCCC"
-    if value in (2, 3):
-        return "background-color: #FFFFCC"
-    return "background-color: #CCFFCC"
 
 
 def render_table(df: pd.DataFrame, highlight_vendor: str | None = None) -> None:  # pragma: no cover - חיווט Streamlit בלבד (Proxy)
@@ -146,20 +88,19 @@ def render_table(df: pd.DataFrame, highlight_vendor: str | None = None) -> None:
 
     # סדר קריאות ה-format קריטי לאבטחה: קריאת format ללא subset מאפסת את פונקציות התצוגה של
     # כל העמודות (כולל escape קודם!), ולכן ה-escape="html" הכללי חייב להיות ראשון וכל
-    # הפורמטרים פולטי ה-HTML (עטיפות <bdo>/badge) מופעלים עם subset ממוקד בלבד - כך שהעמודות
-    # הנותרות (יצרן/סטטוס/RoHS/אריזה/חלופה מוצעת) נשארות מוברחות. ההברחה בפורמטרים ידנית
-    # (_latin_ltr/_mpn_bidi/_vendor_badge); מחיר/מלאי מפורמטים מ-float ואינם מכילים תווי HTML.
+    # הפורמטרים פולטי ה-HTML (עטיפות <bdo>/badge, ראו table_format) מופעלים עם subset ממוקד
+    # בלבד - כך שהעמודות הנותרות (יצרן/סטטוס/RoHS/אריזה/חלופה מוצעת) נשארות מוברחות.
     styler = (
         df.style
         .hide(axis="index")
         .format(escape="html")
-        .format(_price_text, subset=_PRICE_COLUMNS)
-        .format(_stock_text, subset=_STOCK_COLUMNS)
-        .format(_latin_ltr, subset=_LEAD_TIME_COLUMNS + ["חלופות"])
-        .format(_mpn_bidi, subset=[MPN_COLUMN])
-        .format(_vendor_badge, subset=["ספק מומלץ"])
+        .format(price_text, subset=_PRICE_COLUMNS)
+        .format(stock_text, subset=_STOCK_COLUMNS)
+        .format(latin_ltr, subset=_LEAD_TIME_COLUMNS + ["חלופות"])
+        .format(mpn_bidi, subset=[MPN_COLUMN])
+        .format(vendor_badge, subset=["ספק מומלץ"])
         .set_td_classes(td_classes)
-        .map(_risk_color, subset=["ציון סיכון"])
+        .map(risk_color, subset=["ציון סיכון"])
         .set_properties(subset=_END_ALIGNED_COLUMNS, **{"text-align": "end !important"})
         .set_properties(subset=_NOWRAP_COLUMNS, **{"white-space": "nowrap"})
         .set_properties(subset=_BLOCK_START_COLUMNS, **{"border-inline-start": "2px solid #D0D7E2"})

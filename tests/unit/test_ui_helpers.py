@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock, patch
 
+from src.gui.styles import RTL_CSS
 from src.gui.ui_helpers import (
     _BLANK_BOM_TEMPLATE_CSV,
-    RTL_CSS,
     render_summary_metrics,
     render_welcome_header,
 )

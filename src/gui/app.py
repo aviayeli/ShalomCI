@@ -18,9 +18,8 @@ from src.gui.disclaimers import render_disclaimers, render_footer
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_rows import build_rows, summarize_risk
 from src.gui.table_view import render_table_view
+from src.gui.styles import DESIGN_CSS, RTL_CSS
 from src.gui.ui_helpers import (
-    DESIGN_CSS,
-    RTL_CSS,
     api_keys_fingerprint,
     render_api_keys_sidebar,
     render_summary_metrics,
