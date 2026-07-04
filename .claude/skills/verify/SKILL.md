@@ -26,13 +26,13 @@ $SCRATCH/pwenv/bin/playwright install chromium
 
 Key selectors / flow:
 - Upload: `page.set_input_files('[data-testid="stFileUploaderDropzone"] input[type="file"]', bom_path)`
-- Sample BOM: `TestData.csv` at repo root (tracked in git; restore with `git checkout -- TestData.csv` if missing)
+- Sample BOM: `TestData.csv` was deleted from the repo (working tree stays clean); extract it from history into the scratchpad: `git show 55acf7a:TestData.csv > $SCRATCH/TestData.csv` (16 components). Do NOT restore it to the repo root.
 - Run: `page.get_by_role("button", name="הפעל ניתוח").click()` then
   `page.wait_for_selector("text=ציון סיכון כללי", timeout=120000)` — real Mouser API calls, needs `.env` with `MOUSER_API_KEY`; `st.cache_data` makes reruns instant.
 - Table is plain HTML (`pandas.Styler` via `st.html`): `page.locator("table")`.
 - KPI strip: `[data-testid="stMetric"]`.
 - Vendor pills: container `[data-testid="stButtonGroup"]`, buttons `[data-testid^="stBaseButton-pills"]` (selected pill gets a different suffix — use the prefix match).
-- Pagination controls only render when the table exceeds 50 rows; TestData.csv has 16 components, so drive pagination via a harness page that calls `render_table_view` with a synthetic >50-row DataFrame (no API calls).
+- Pagination controls only render when the table exceeds 50 rows; the sample BOM has 16 components, so drive pagination via a harness page that calls `render_table_view` with a synthetic >50-row DataFrame (no API calls).
 
 ## Gotchas
 

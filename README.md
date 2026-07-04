@@ -64,7 +64,7 @@ cp .env-example .env
 **CLI — עיבוד BOM והפקת דוח:**
 
 ```bash
-uv run python -m src.cli.main process TestData.csv
+uv run python -m src.cli.main process my_bom.csv   # קובץ BOM עם עמודת MPN (תבנית ריקה זמינה להורדה ב-GUI)
 ```
 
 **CLI — רשימת תיקי טיפול פתוחים:**
