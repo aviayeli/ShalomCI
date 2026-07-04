@@ -31,6 +31,8 @@ Key selectors / flow:
   `page.wait_for_selector("text=ציון סיכון כללי", timeout=120000)` — real Mouser API calls, needs `.env` with `MOUSER_API_KEY`; `st.cache_data` makes reruns instant.
 - Table is plain HTML (`pandas.Styler` via `st.html`): `page.locator("table")`.
 - KPI strip: `[data-testid="stMetric"]`.
+- Vendor pills: container `[data-testid="stButtonGroup"]`, buttons `[data-testid^="stBaseButton-pills"]` (selected pill gets a different suffix — use the prefix match).
+- Pagination controls only render when the table exceeds 50 rows; TestData.csv has 16 components, so drive pagination via a harness page that calls `render_table_view` with a synthetic >50-row DataFrame (no API calls).
 
 ## Gotchas
 
