@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from src.services.digikey_api import DigiKeyClient
-from src.services.gatekeeper import ApiGatekeeper
+from src.services.gatekeeper import ApiGatekeeper, RateLimitExhaustedError
 from src.services.mouser_api import MouserClient
 from src.services.octopart_api import OctopartClient
 
@@ -76,6 +76,21 @@ async def test_gatekeeper_fails_fast_on_400_client_error_no_retry(gatekeeper, mo
 
     mock_request.assert_called_once()
     sleep_mock.assert_not_awaited()
+
+
+async def test_gatekeeper_raises_rate_limit_error_after_persistent_429(gatekeeper, monkeypatch):
+    """מוודא שכאשר כל הניסיונות החוזרים מסתיימים ב-429, נזרקת RateLimitExhaustedError (עם provider)
+    ולא ה-Exception הגנרי - כדי שה-GUI יבחין במיצוי מכסה לעומת כשל רשת. (הבאג: ה-continue על 429
+    'בולע' את הניסיונות ונופל מהלולאה בשקט.)"""
+    mock_request = AsyncMock(return_value=MockResponse({}, status_code=429))
+    monkeypatch.setattr(gatekeeper.client, "request", mock_request)
+    monkeypatch.setattr("src.services.gatekeeper.asyncio.sleep", AsyncMock())
+
+    with pytest.raises(RateLimitExhaustedError) as exc_info:
+        await gatekeeper.request("mouser", "GET", "http://test.com", retries=3)
+
+    assert exc_info.value.provider == "mouser"
+    assert mock_request.call_count == 3
 
 
 async def test_gatekeeper_retries_on_500_server_error(gatekeeper, monkeypatch):

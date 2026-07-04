@@ -7,9 +7,10 @@ from src.core.cross_ref import (
     DIGIKEY_FIELD_DEFAULTS,
     NETWORK_ERROR_STATUS,
     OCTOPART_FIELD_DEFAULTS,
+    RATE_LIMIT_STATUS,
     CrossReferenceEngine,
 )
-from src.services.gatekeeper import ApiGatekeeper
+from src.services.gatekeeper import ApiGatekeeper, RateLimitExhaustedError
 from src.services.mouser_api import MouserClient
 
 
@@ -180,6 +181,19 @@ async def test_get_part_data_http_status_error_marks_distinct_status():
     data = await engine.get_part_data("NE555")
 
     assert data == {"manufacturer": NETWORK_ERROR_STATUS, "lifecycle": NETWORK_ERROR_STATUS, "risk_score": 0}
+
+
+@pytest.mark.asyncio
+async def test_get_part_data_rate_limit_marks_distinct_status():
+    """מוודא שמיצוי מכסת קצב (RateLimitExhaustedError מה-Gatekeeper) ממופה לסטטוס ייעודי
+    RATE_LIMIT_STATUS - מובחן מ-NETWORK_ERROR_STATUS - כדי שה-GUI יסביר שנגמרה המכסה ולא תקלת רשת."""
+    mock_client = AsyncMock()
+    mock_client.search_part.side_effect = RateLimitExhaustedError("mouser")
+
+    engine = CrossReferenceEngine(api_client=mock_client)
+    data = await engine.get_part_data("NE555")
+
+    assert data == {"manufacturer": RATE_LIMIT_STATUS, "lifecycle": RATE_LIMIT_STATUS, "risk_score": 0}
 
 
 @pytest.mark.asyncio

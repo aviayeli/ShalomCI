@@ -8,6 +8,15 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+class RateLimitExhaustedError(Exception):
+    """מיצוי מכסת קצב אמיתי (לא כשל רשת): כל הניסיונות החוזרים הסתיימו ב-429. נבדל מ-Exception
+    הגנרי כדי שה-GUI יבחין בין 'נגמרה המכסה היומית/קרדיטים' לבין תקלת רשת ויציג התראה מתאימה."""
+
+    def __init__(self, provider: str):
+        self.provider = provider
+        super().__init__(f"Rate limit quota exhausted for {provider}.")
+
+
 class RateLimiter:
     """מנגנון Token Bucket לאכיפת מגבלות קצב (דקה/יום) כולל ניהול תור מקבילי."""
 
@@ -66,6 +75,9 @@ class ApiGatekeeper:
             raise ValueError(f"Provider '{provider}' is not supported by Gatekeeper.")
 
         delay = 1.0  # השהייה ראשונית של שנייה במקרה של חסימה
+        # ה-429 מטופל ב-continue (לא דרך except), ולכן מיצוי הניסיונות "נופל" מהלולאה בשקט.
+        # דגל זה מבחין בין fall-through שמקורו כולו ב-429 (מיצוי מכסה) לבין כשל רשת גנרי.
+        last_failure_was_429 = False
 
         for attempt in range(retries):
             await limiter.acquire()
@@ -74,10 +86,13 @@ class ApiGatekeeper:
 
                 # טיפול אקטיבי בחסימת שרת
                 if response.status_code == 429:
+                    last_failure_was_429 = True
                     logger.warning(f"Rate limit hit (429) for {provider}. Retrying in {delay}s...")
                     await asyncio.sleep(delay)
                     delay *= 2  # Exponential Backoff
                     continue
+
+                last_failure_was_429 = False
 
                 response.raise_for_status()
                 return response
@@ -102,4 +117,8 @@ class ApiGatekeeper:
                 await asyncio.sleep(delay)
                 delay *= 2
 
+        # מיצוי הלולאה: אם הניסיון האחרון היה 429, זו מכסת קצב ממוצה (ולא כשל רשת) - נזרוק
+        # שגיאה ייעודית כדי שה-GUI יציג התראת מכסה מובחנת. אחרת נשמור על ה-Exception הגנרי.
+        if last_failure_was_429:
+            raise RateLimitExhaustedError(provider)
         raise Exception(f"Failed to execute request to {provider} after {retries} retries.")

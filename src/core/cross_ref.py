@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 import httpx
 
 from src.services.digikey_api import DigiKeyClient
+from src.services.gatekeeper import RateLimitExhaustedError
 from src.services.mouser_api import MouserClient
 from src.services.octopart_api import OctopartClient
 
@@ -10,6 +11,10 @@ from src.services.octopart_api import OctopartClient
 # בניגוד ל"Unknown"/"Error" עסקיים רגילים - כדי שממשק המשתמש (GUI) יוכל להבחין בין
 # "לא מצאנו את הרכיב" לבין "לא הצלחנו בכלל להגיע ל-Mouser" ולהציג התראה מפורשת על כך.
 NETWORK_ERROR_STATUS = "Network Error"
+
+# מסמן סטטוס ייעודי למיצוי מכסת קצב (כל ה-Retries הסתיימו ב-429) - נבדל מ-NETWORK_ERROR_STATUS
+# כדי שה-GUI יסביר שנגמרה המכסה היומית/קרדיטים (ולא תקלת רשת) ויציע לנסות מחר או להוסיף מפתחות.
+RATE_LIMIT_STATUS = "Rate Limit"
 
 # ברירות מחדל לנתוני DigiKey/Octopart - מוצגים לצד Mouser (side-by-side) להשוואת ספקים,
 # אינם משפיעים על risk_score/lifecycle_status המרכזיים שנגזרים אך ורק מ-Mouser (מקור יחיד,
@@ -76,6 +81,10 @@ class CrossReferenceEngine:
             if isinstance(self.api_client, MouserClient):
                 result.update(MouserClient.parse_extra_fields(part))
             return result
+        except RateLimitExhaustedError as e:
+            # מיצוי מכסת קצב (כל ה-Retries הסתיימו ב-429) - סטטוס מובחן מכשל רשת רגיל.
+            print(f"DEBUG: מכסת קצב מוצתה בשליפת נתוני רכיב {mpn}: {e}")
+            return {"manufacturer": RATE_LIMIT_STATUS, "lifecycle": RATE_LIMIT_STATUS, "risk_score": 0}
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             # ה-Gatekeeper כבר מיצה את כל ניסיונות ה-Retry - זו שגיאת רשת אמיתית ולא רכיב לא ידוע.
             print(f"DEBUG: שגיאת רשת בשליפת נתוני רכיב {mpn}: {e}")

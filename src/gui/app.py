@@ -12,13 +12,19 @@ project_root = str(Path(__file__).parent.parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from src.core.cross_ref import NETWORK_ERROR_STATUS
+from src.core.cross_ref import NETWORK_ERROR_STATUS, RATE_LIMIT_STATUS
 from src.gui.accessibility_widget import inject_accessibility_widget
 from src.gui.disclaimers import render_disclaimers, render_footer
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_rows import build_rows, summarize_risk
 from src.gui.table_view import render_table_view
-from src.gui.ui_helpers import RTL_CSS, render_summary_metrics, render_welcome_header
+from src.gui.ui_helpers import (
+    RTL_CSS,
+    api_keys_fingerprint,
+    render_api_keys_sidebar,
+    render_summary_metrics,
+    render_welcome_header,
+)
 from src.sdk import ShalomCI_SDK
 
 
@@ -37,9 +43,11 @@ async def run_analysis(file_path: str, filename: str):
 
 
 @st.cache_data(show_spinner=False)
-def cached_analysis(file_bytes: bytes, filename: str):  # pragma: no cover - חיווט Streamlit/asyncio (Proxy); run_analysis נבדק ישירות
+def cached_analysis(file_bytes: bytes, filename: str, keys_fingerprint: str):  # pragma: no cover - חיווט Streamlit/asyncio (Proxy); run_analysis נבדק ישירות
     """עוטף את run_analysis במטמון (keyed לפי hash תוכן+שם) - בלי זה, כל rerun של Streamlit
-    היה מפעיל שוב את כל העשרת ה-Mouser API ועלול לגרום לחסימת קצב."""
+    היה מפעיל שוב את כל העשרת ה-Mouser API ועלול לגרום לחסימת קצב.
+    keys_fingerprint הוא חלק ממפתח המטמון בלבד (אינו בשימוש בגוף) - שינוי מפתחות ה-API משנה
+    אותו וכך מאפשר תוצאה חדשה, מבלי לאחסן את המפתחות הגולמיים במפתח המטמון."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
         tmp.write(file_bytes)
         tmp_path = tmp.name
@@ -55,6 +63,8 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
     inject_accessibility_widget()
+    # סרגל הצד למפתחות API מרונדר לפני כפתור הניתוח כדי שערכים שהוזנו ייכתבו ל-os.environ בזמן.
+    render_api_keys_sidebar()
     st.title("⚙️ ShalomCI — אינטליגנציית רכיבים")
     st.caption("ניהול מחזור חיי רכיבים אלקטרוניים · השוואת מלאי, תמחור וסיכון אספקה בזמן אמת")
     # ההסבר מתקפל: פתוח בכניסה הראשונה, מכווץ אוטומטית לאחר שיש תוצאות.
@@ -73,7 +83,9 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     if st.button("🚀 הפעל ניתוח", disabled=not uploaded_file):
         with st.spinner("מנתח את עץ המוצר ושואב נתונים מ-Mouser, DigiKey ו-Octopart, אנא המתן…"):
             try:
-                st.session_state["result"] = cached_analysis(uploaded_file.getvalue(), uploaded_file.name)
+                st.session_state["result"] = cached_analysis(
+                    uploaded_file.getvalue(), uploaded_file.name, api_keys_fingerprint()
+                )
             except Exception as e:
                 st.session_state.pop("result", None)
                 st.error(f"אירעה שגיאה בתהליך הניתוח: {e}. ודא שמפתחות ה-API מוגדרים כראוי בקובץ ה-env ונסה שוב.")
@@ -82,6 +94,15 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
         render_footer()
         return
     score, data = st.session_state["result"]
+
+    # מיצוי מכסת קצב (כל ה-Retries הסתיימו ב-429) - התראה מובחנת מכשל רשת: המשתמש צריך לדעת
+    # שהמכסה היומית/הקרדיטים נגמרו (ולא שיש תקלת רשת חולפת) ולנסות מחר או להוסיף מפתחות.
+    if any(c.get("manufacturer") == RATE_LIMIT_STATUS for c in data):
+        st.warning(
+            "⚠️ מכסת הקצב של ה-API מוצתה (Mouser: 1,000 קריאות ביום · Octopart/Nexar: קרדיטים). "
+            "מוצגים נתוני ברירת מחדל עבור חלק מהרכיבים — נסו שוב מחר, או הוסיפו מפתחות API "
+            "בסרגל הצד (🔌 הגדרות מפתחות API)."
+        )
 
     # אם ה-Gatekeeper מיצה את כל ה-Retry-ים מול Mouser, נחשוף זאת במפורש ולא נציג בשקט N/A/❓
     if any(c.get("manufacturer") == NETWORK_ERROR_STATUS for c in data):

@@ -1,3 +1,6 @@
+import hashlib
+import os
+
 import streamlit as st
 
 # CSS גלובלי: RTL לוגי (start/end, לא right/left קשיח), טיפוגרפיה נגישה מותאמת עברית, ורקע.
@@ -103,6 +106,56 @@ def render_welcome_header(expanded: bool) -> None:
             file_name="shalomci_bom_template.csv",
             mime="text/csv",
         )
+
+
+# 5 משתני הסביבה שה-SDK קורא בבניית הקליינטים (ראו src/sdk.py). התוויות בעברית, אך שמות
+# הספקים (Mouser/DigiKey) נשארים לטיניים בתוך טקסט עברי כמקובל בשאר האפליקציה.
+_API_KEY_FIELDS = [
+    ("MOUSER_API_KEY", "מפתח Mouser API"),
+    ("DIGIKEY_CLIENT_ID", "DigiKey Client ID"),
+    ("DIGIKEY_CLIENT_SECRET", "DigiKey Client Secret"),
+    ("OCTOPART_CLIENT_ID", "Octopart/Nexar Client ID"),
+    ("OCTOPART_CLIENT_SECRET", "Octopart/Nexar Client Secret"),
+]
+
+# ספק -> משתני הסביבה הנדרשים לו. הספק "מוגדר" רק אם כל המשתנים שלו אינם ריקים (DigiKey/Octopart
+# דורשים גם ID וגם Secret; חסר אחד מהם והקליינט נופל ל-None וחוזר לנתוני ברירת מחדל).
+_PROVIDER_REQUIREMENTS = {
+    "Mouser": ["MOUSER_API_KEY"],
+    "DigiKey": ["DIGIKEY_CLIENT_ID", "DIGIKEY_CLIENT_SECRET"],
+    "Octopart": ["OCTOPART_CLIENT_ID", "OCTOPART_CLIENT_SECRET"],
+}
+
+
+def render_api_keys_sidebar() -> None:
+    """סרגל צד להזנת מפתחות API. הערכים נכתבים ל-os.environ בזמן אמת (לפני כפתור הניתוח) כך
+    שה-SDK ישאב אותם בריצה הבאה; שדה ריק => הסרת המשתנה (הקליינט יפול חזרה ל-None/ברירת מחדל).
+    המפתחות חיים רק למשך ה-session (בזיכרון) ואינם נכתבים לדיסק."""
+    with st.sidebar.expander("🔌 הגדרות מפתחות API"):
+        for var, label in _API_KEY_FIELDS:
+            # prefill מ-os.environ (כולל מפתחות שנטענו מ-.env) - מוצג ממוסך (password).
+            value = st.text_input(label, value=os.environ.get(var, ""), type="password")
+            if value:
+                os.environ[var] = value
+            else:
+                os.environ.pop(var, None)
+
+        st.markdown("**סטטוס ספקים:**")
+        for provider, required in _PROVIDER_REQUIREMENTS.items():
+            configured = all(os.environ.get(v) for v in required)
+            st.markdown(f"{'✅ מוגדר' if configured else '⚠️ חסר'} · {provider}")
+
+        st.caption(
+            "המפתחות נשמרים לזמן ה-session בלבד (לא נכתבים לדיסק). "
+            "מגבלות שכבה חינמית חלות — Mouser: 1,000 קריאות ביום."
+        )
+
+
+def api_keys_fingerprint() -> str:
+    """טביעת אצבע יציבה ולא-הפיכה (sha256) של ערכי המפתחות הנוכחיים, לשימוש כפרמטר מטמון של
+    cached_analysis - כדי ששינוי מפתח יוכל להפיק תוצאה שונה, בלי לאחסן את המפתחות עצמם במפתח המטמון."""
+    raw = "\x00".join(os.environ.get(var, "") for var, _ in _API_KEY_FIELDS)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def render_summary_metrics(summary: dict, score) -> None:
