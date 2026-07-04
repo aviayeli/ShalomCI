@@ -14,6 +14,7 @@ if project_root not in sys.path:
 
 from src.core.cross_ref import NETWORK_ERROR_STATUS, RATE_LIMIT_STATUS
 from src.gui.accessibility_widget import inject_accessibility_widget
+from src.gui.auth import render_logout_button, require_login
 from src.gui.disclaimers import render_disclaimers, render_footer
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
 from src.gui.table_rows import build_rows, summarize_risk
@@ -63,8 +64,14 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     st.set_page_config(page_title="ShalomCI", layout="wide")
     st.markdown(RTL_CSS, unsafe_allow_html=True)
     inject_accessibility_widget()
+    # שער כניסה (אופציונלי): לפני סרגל הצד כדי שהמפתחות/ההתנתקות לא ירונדרו כלל במסך ההתחברות.
+    if not require_login():
+        render_footer()
+        return
     # סרגל הצד למפתחות API מרונדר לפני כפתור הניתוח כדי שערכים שהוזנו ייכתבו ל-os.environ בזמן.
     render_api_keys_sidebar()
+    # כפתור ההתנתקות מרונדר אחרי מפתחות ה-API כך שיישב בתחתית סרגל הצד (סדר קריאה = סדר רינדור).
+    render_logout_button()
     st.title("⚙️ ShalomCI — אינטליגנציית רכיבים")
     st.caption("ניהול מחזור חיי רכיבים אלקטרוניים · השוואת מלאי, תמחור וסיכון אספקה בזמן אמת")
     # ההסבר מתקפל: פתוח בכניסה הראשונה, מכווץ אוטומטית לאחר שיש תוצאות.
