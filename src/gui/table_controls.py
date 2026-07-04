@@ -2,11 +2,12 @@ import re
 
 import pandas as pd
 
-from src.gui.table_rows import MPN_COLUMN
+from src.gui.table_rows import LEAD_TIME_COLUMN_PREFIX, MPN_COLUMN, PRICE_STOCK_VENDORS
 
 # עמודות מפורמטות כטקסט (למשל "זמן אספקה: 63 ימים") שדורשות שליפת מספר למיון נכון - עמודות
 # המחיר/מלאי כבר מספריות (float, ראו table_rows.py) וממוינות נכון באופן טבעי ללא צורך בכך.
-_NUMERIC_TEXT_COLUMNS = {"אספקה - Mouser", "אספקה - DigiKey", "אספקה - Octopart"}
+# נבנות מקבועי הסכימה של table_rows כדי שקידומת "אספקה - " תוגדר במקום אחד בלבד.
+_NUMERIC_TEXT_COLUMNS = {f"{LEAD_TIME_COLUMN_PREFIX}{label}" for label in PRICE_STOCK_VENDORS}
 _NUMBER_RE = re.compile(r"[\d.,]+")
 
 

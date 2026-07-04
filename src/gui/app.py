@@ -15,8 +15,8 @@ if project_root not in sys.path:
 from src.core.cross_ref import NETWORK_ERROR_STATUS
 from src.gui.accessibility_widget import inject_accessibility_widget
 from src.gui.table_controls import available_statuses, filter_and_sort, sort_options
-from src.gui.table_render import render_table
 from src.gui.table_rows import build_rows, summarize_risk
+from src.gui.table_view import render_table_view
 from src.gui.ui_helpers import RTL_CSS, render_summary_metrics, render_welcome_header
 from src.sdk import ShalomCI_SDK
 
@@ -110,7 +110,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
         "📥 הורד דוח (CSV)", data=df.to_csv(index=False).encode("utf-8-sig"),
         file_name="shalomci_report.csv", mime="text/csv"
     )
-    render_table(df)
+    render_table_view(df)
 
 
 if __name__ == "__main__":

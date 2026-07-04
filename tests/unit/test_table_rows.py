@@ -1,6 +1,6 @@
 import pytest
 
-from src.gui.table_rows import build_rows, recommended_vendor, status_icon, summarize_risk
+from src.gui.table_rows import build_rows, recommended_vendor, status_icon, summarize_risk, vendor_columns
 
 
 @pytest.mark.parametrize("score,expected", [
@@ -50,6 +50,16 @@ def test_build_rows_defaults_for_missing_fields():
     assert rows[0]["חלופה מוצעת"] == "אין"
     assert rows[0]["אספקה - DigiKey"] == "זמן אספקה: לא ידוע"
     assert rows[0]["אספקה - Octopart"] == "זמן אספקה: לא ידוע"
+
+
+def test_build_rows_column_order_mpn_first_recommended_vendor_last():
+    """מוודא את סדר העמודות RTL: מק"ט פותח את זרימת הקריאה בימין (מפתח ראשון) ו'ספק מומלץ'
+    סוגר אותה בשמאל כמסקנה הפעילה (מפתח אחרון) - אחרי 'חלופות'."""
+    keys = list(build_rows([{}])[0].keys())
+
+    assert keys[0] == "מק\"ט"
+    assert keys[-1] == "ספק מומלץ"
+    assert keys[-2] == "חלופות"
 
 
 def test_build_rows_includes_extended_mouser_fields():
@@ -139,3 +149,23 @@ def test_summarize_risk_unknown_score_counted_only_in_total():
     """מוודא שציון לא ידוע (0 / חסר) נספר ב-total בלבד ולא באף קטגוריית משנה."""
     summary = summarize_risk([{"risk_score": 0}, {}])
     assert summary == {"total": 2, "critical": 0, "warning": 0, "healthy": 0}
+
+
+def test_vendor_columns_returns_price_stock_lead_triplet():
+    """מוודא ש-vendor_columns מחזיר בדיוק את שלישיית עמודות הספק (מחיר/מלאי/אספקה)."""
+    assert vendor_columns("Mouser") == ["מחיר - Mouser", "מלאי - Mouser", "אספקה - Mouser"]
+
+
+@pytest.mark.parametrize("empty", [None, ""])
+def test_vendor_columns_empty_selection_returns_no_columns(empty):
+    """מוודא שבחירה ריקה (None/מחרוזת ריקה) מחזירה רשימה ריקה - כלומר אין הדגשה כלל."""
+    assert vendor_columns(empty) == []
+
+
+def test_vendor_columns_names_match_build_rows_columns():
+    """מוודא שהשמות ש-vendor_columns בונה קיימים בפועל בשורות build_rows לכל אחד משלושת
+    הספקים - הגנה מפני סטייה עתידית בין סכמת העמודות לבין ההדגשה האנכית."""
+    row = build_rows([{}])[0]
+    for vendor in ("Mouser", "DigiKey", "Octopart"):
+        for column in vendor_columns(vendor):
+            assert column in row

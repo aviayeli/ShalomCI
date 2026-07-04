@@ -6,7 +6,17 @@ STATUS_ICONS = {1: "⛔", 2: "⚠️", 3: "⚠️", 4: "✅", 5: "✅"}
 PRICE_STOCK_VENDORS = {"Mouser": "mouser", "DigiKey": "digikey", "Octopart": "octopart"}
 PRICE_COLUMN_PREFIX = "מחיר - "
 STOCK_COLUMN_PREFIX = "מלאי - "
+LEAD_TIME_COLUMN_PREFIX = "אספקה - "
 MPN_COLUMN = "מק\"ט"
+
+
+def vendor_columns(vendor) -> list:
+    """מחזיר את שלוש עמודות הספק (מחיר / מלאי / אספקה) לצורך הדגשה אנכית - כך שהמשתמש יכול
+    לעקוב אחר נתוני ספק יחיד לאורך הטבלה. vendor ריק/None -> רשימה ריקה (אין הדגשה כלל).
+    ממוקם כאן, לצד קבועי סכמת העמודות, כדי שהקידומות יוגדרו במקום אחד בלבד."""
+    if not vendor:
+        return []
+    return [f"{prefix}{vendor}" for prefix in (PRICE_COLUMN_PREFIX, STOCK_COLUMN_PREFIX, LEAD_TIME_COLUMN_PREFIX)]
 
 
 def summarize_risk(components: list) -> dict:
@@ -69,23 +79,25 @@ def build_rows(components: list) -> list:
     rows = []
     for c in components:
         score = c.get("risk_score", 0)
-        # סדר המפתחות = סדר העמודות (RTL, מק"ט הימני ביותר): תקציר החלטה (מק"ט → יצרן →
-        # סטטוס → ציון סיכון → ספק מומלץ), אחריו בלוקי המדדים (מחירים → מלאים → אספקה),
-        # ובסוף (שמאל) הזנב הארוך (חלופה מוצעת / RoHS / אריזה / חלופות).
+        # סדר המפתחות = סדר העמודות (RTL): המפתח הראשון מרונדר בימין (תחילת זרימת הקריאה
+        # העברית) והאחרון בשמאל (סופה). מק"ט (המפתח הראשי) פותח את הזרימה בימין, ו"ספק מומלץ"
+        # (המסקנה הפעילה - איזה ספק לבחור) סוגר אותה בשמאל כמפתח האחרון. בין השניים: תקציר
+        # ההחלטה (יצרן → סטטוס → ציון סיכון), בלוקי המדדים (מחירים → מלאים → אספקה) והזנב
+        # הארוך (חלופה מוצעת / RoHS / אריזה / חלופות).
         rows.append({
             MPN_COLUMN: c.get("mpn", "N/A"),
             "יצרן": c.get("manufacturer", "N/A"),
             "סטטוס": f"{status_icon(score)} {c.get('lifecycle_status', 'N/A')}",
             "ציון סיכון": score,
-            "ספק מומלץ": recommended_vendor(c),
             **vendor_price_stock_columns(c),
-            "אספקה - Mouser": c.get("lead_time", "זמן אספקה: לא ידוע"),
-            "אספקה - DigiKey": c.get("digikey_lead_time", "זמן אספקה: לא ידוע"),
-            "אספקה - Octopart": c.get("octopart_lead_time", "זמן אספקה: לא ידוע"),
+            f"{LEAD_TIME_COLUMN_PREFIX}Mouser": c.get("lead_time", "זמן אספקה: לא ידוע"),
+            f"{LEAD_TIME_COLUMN_PREFIX}DigiKey": c.get("digikey_lead_time", "זמן אספקה: לא ידוע"),
+            f"{LEAD_TIME_COLUMN_PREFIX}Octopart": c.get("octopart_lead_time", "זמן אספקה: לא ידוע"),
             "חלופה מוצעת": c.get("suggested_replacement", "אין"),
             "תאימות RoHS": c.get("rohs_status", "לא ידוע"),
             "צורת אריזה": c.get("packaging", "לא ידוע"),
             "חלופות": ", ".join([a.get("mpn", "") for a in c.get("alternatives", [])]) if c.get(
-                "alternatives") else "אין"
+                "alternatives") else "אין",
+            "ספק מומלץ": recommended_vendor(c),
         })
     return rows

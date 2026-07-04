@@ -3,7 +3,8 @@ import html
 import pandas as pd
 import streamlit as st
 
-from src.gui.table_rows import MPN_COLUMN, PRICE_COLUMN_PREFIX, PRICE_STOCK_VENDORS, STOCK_COLUMN_PREFIX
+from src.gui.table_rows import (LEAD_TIME_COLUMN_PREFIX, MPN_COLUMN, PRICE_COLUMN_PREFIX,
+                                PRICE_STOCK_VENDORS, STOCK_COLUMN_PREFIX, vendor_columns)
 
 # פונט מותאם עברית (אותיות עבריות "קטנות" חזותית מלטיניות באותו גודל נומינלי), ללא
 # italics וללא letter-spacing נוסף - טיפוגרפיה נגישה (WCAG) לקריאות עברית מיטבית.
@@ -20,13 +21,16 @@ _END_ALIGNED_COLUMNS = [MPN_COLUMN] + _PRICE_COLUMNS + _STOCK_COLUMNS
 # מפריד border בתחילת כל בלוק מדד (תיחום 3 בלוקי ההשוואה); גלישת זנב ארוך (רשימות MPN)
 # לשורה במקום מתיחת הטבלה לרוחב; רוחב מינימלי למק"ט/יצרן למניעת קריסת עמודה.
 _NOWRAP_COLUMNS = _PRICE_COLUMNS + _STOCK_COLUMNS
-_BLOCK_START_COLUMNS = [f"{PRICE_COLUMN_PREFIX}Mouser", f"{STOCK_COLUMN_PREFIX}Mouser", "אספקה - Mouser"]
+_BLOCK_START_COLUMNS = [f"{prefix}Mouser" for prefix in (PRICE_COLUMN_PREFIX, STOCK_COLUMN_PREFIX, LEAD_TIME_COLUMN_PREFIX)]
 _MIN_WIDTH_COLUMNS = [MPN_COLUMN, "יצרן"]
 _WRAP_COLUMNS = ["חלופה מוצעת", "חלופות"]
 
 # CSS מקובע ל-Styler (scoped אוטומטית על ידי pandas לתחילית ה-id הייחודית של הטבלה, כך
 # שלא דולף/מתנגש עם שאר העמוד) - RTL לוגי (start/end), sticky header, וטיפוגרפיה נגישה.
 # צבעי תג ("pill") לכל ספק מומלץ - מראה "ממשלתי" נקי; slug נייטרלי ל"לא ידוע".
+# תכלת עדין להדגשת עמודות ספק נבחר: inline (גובר על zebra/hover כמו צביעת הסיכון), נשמרת
+# ניגודיות WCAG קריאה מול טקסט התא הכהה גם על שורות ה-zebra.
+_HIGHLIGHT_TINT = "#DBEAFE"
 _VENDOR_SLUGS = {"Mouser": "mouser", "DigiKey": "digikey", "Octopart": "octopart"}
 _VENDOR_BADGE_COLORS = {
     "mouser": ("#0056B3", "#FFFFFF"), "digikey": ("#CC0000", "#FFFFFF"),
@@ -45,13 +49,14 @@ _TABLE_STYLES = [
         ("box-shadow", "0 2px 2px -1px rgba(0,0,0,0.4)"),
     ]},
     # גבולות אופקיים בלבד (border-bottom) במקום רשת מלאה - מראה נקי יותר; פסים לסירוגין
-    # (zebra) והדגשת שורה במעבר עכבר (hover) לשיפור סריקה ויזואלית. תאי ציון-סיכון שומרים
-    # על צבעם: ה-map מזריק background-color inline הגובר על כללי zebra/hover (ללא !important).
+    # (zebra) והדגשת שורה במעבר עכבר (hover) לשיפור סריקה ויזואלית. קריטי: zebra/hover על
+    # ה-tr (לא על ה-td) - צבעי תא פרטניים (ציון סיכון, הדגשת ספק) נקבעים על ה-td ומכסים את
+    # רקע השורה ללא מלחמת specificity (כלל ברמת td של ה-zebra גבר על צבעי התא בשורות זוגיות).
     {"selector": "td", "props": [
         ("border", "none"), ("border-bottom", "1px solid #E3E8EF"), ("padding", "8px"), ("text-align", "start"),
     ]},
-    {"selector": "tbody tr:nth-child(even) td", "props": [("background-color", "#F6F8FB")]},
-    {"selector": "tbody tr:hover td", "props": [("background-color", "#EEF4FB")]},
+    {"selector": "tbody tr:nth-child(even)", "props": [("background-color", "#F6F8FB")]},
+    {"selector": "tbody tr:hover", "props": [("background-color", "#EEF4FB")]},
     {"selector": ".vendor-badge", "props": [
         ("display", "inline-block"), ("padding", "2px 12px"), ("border-radius", "999px"),
         ("font-size", "0.85rem"), ("font-weight", "600"), ("white-space", "nowrap"),
@@ -93,7 +98,7 @@ def _risk_color(value) -> str:
     return "background-color: #CCFFCC"
 
 
-def render_table(df: pd.DataFrame) -> None:  # pragma: no cover - חיווט Streamlit בלבד (Proxy)
+def render_table(df: pd.DataFrame, highlight_vendor: str | None = None) -> None:  # pragma: no cover - חיווט Streamlit בלבד (Proxy)
     """
     מרנדר את טבלת הרכיבים כטבלת HTML טהורה (pandas.Styler -> st.html) - לא st.dataframe
     (ה-grid הפנימי מצויר על canvas ושובר RTL עברי לחלוטין) ולא st.iframe/components.html
@@ -109,7 +114,7 @@ def render_table(df: pd.DataFrame) -> None:  # pragma: no cover - חיווט Str
         formatters[f"{PRICE_COLUMN_PREFIX}{label}"] = _price_text
         formatters[f"{STOCK_COLUMN_PREFIX}{label}"] = _stock_text
 
-    table_html = (
+    styler = (
         df.style
         .hide(axis="index")
         .format(escape="html")
@@ -127,9 +132,11 @@ def render_table(df: pd.DataFrame) -> None:  # pragma: no cover - חיווט Str
         )
         .set_table_styles(_TABLE_STYLES)
         .set_table_attributes('role="table"')
-        .to_html()
-        .replace("<th ", '<th scope="col" ')
     )
+    highlight_cols = [c for c in vendor_columns(highlight_vendor) if c in df.columns]
+    if highlight_cols:
+        styler = styler.set_properties(subset=highlight_cols, **{"background-color": _HIGHLIGHT_TINT})
+    table_html = styler.to_html().replace("<th ", '<th scope="col" ')
     # מיכל גלילה: הופך את ה-thead ה-sticky ל"דביק" בתוך האזור עצמו (ולא ביחס לחלון), ומעניק
     # מסגרת/פינות מעוגלות/צל עדין למראה "ממשלתי" נקי. שומר על role/aria-label/tabindex לנגישות.
     container_style = (

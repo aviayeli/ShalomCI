@@ -62,7 +62,7 @@ cp .env-example .env
 **CLI — עיבוד BOM והפקת דוח:**
 
 ```bash
-uv run python -m src.cli.main process TestData.xlsx
+uv run python -m src.cli.main process TestData.csv
 ```
 
 **CLI — רשימת תיקי טיפול פתוחים:**
