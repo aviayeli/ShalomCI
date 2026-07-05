@@ -1,0 +1,26 @@
+# Python virtual environment
+.venv
+
+# Database files
+cases.db
+
+# Docs & tests (not needed at runtime)
+docs/
+tests/
+
+# Data files
+*.xlsx
+*.csv
+
+# Python cache
+__pycache__/
+
+# Environments & Secrets
+.env
+
+# Windows/WSL zone metadata
+*:Zone.Identifier
+
+# Version control & tooling (never belong in a build context)
+.git
+.claude

@@ -35,3 +35,6 @@ htmlcov/
 
 # uv / package manager
 .uv_cache
+
+# Windows/WSL zone metadata
+*:Zone.Identifier
