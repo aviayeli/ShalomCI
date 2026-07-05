@@ -81,7 +81,11 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
         help="פורמטים נתמכים: Excel‏ (xlsx) או CSV. הקובץ חייב לכלול עמודה בשם MPN.",
     )
 
-    if st.button("🚀 הפעל ניתוח", disabled=not uploaded_file):
+    # RTL הופך את סדר העמודות: העמודה הראשונה בימין. כפתור ההרצה בימין (תחילת זרימת הקריאה),
+    # ומציין מקום לכפתור ההורדה בעמודה שלצידו (שמאל) - מתמלא רק אחרי הסינון (ראו למטה).
+    col_run, col_export, _ = st.columns([1, 1, 3])
+    export_slot = col_export.empty()
+    if col_run.button("🚀 הפעל ניתוח", disabled=not uploaded_file):
         with st.spinner("מנתח את עץ המוצר ושואב נתונים מ-Mouser, DigiKey ו-Octopart, אנא המתן…"):
             try:
                 st.session_state["result"] = cached_analysis(
@@ -116,10 +120,7 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
 
     render_summary_metrics(summarize_risk(data), score)
 
-    # שורת כותרת התוצאות: הכותרת בימין, מציין מקום לכפתור ההורדה בשמאל. הכפתור עצמו
-    # מרונדר אחרי הסינון (למטה) כדי לייצא את ה-DataFrame המסונן/המוצג בפועל.
-    col_title, col_download = st.columns([4, 1])
-    col_title.subheader("תוצאות הניתוח")
+    st.subheader("תוצאות הניתוח")
 
     st.subheader("🔍 סינון ומיון")
     col_search, col_status, col_sort, col_order = st.columns([2, 2, 2, 1])
@@ -131,8 +132,9 @@ def main():  # pragma: no cover - חיווט Streamlit בלבד (Proxy); הלו�
     ascending = col_order.radio("סדר מיון", options=["עולה", "יורד"]) == "עולה"
     df = filter_and_sort(df, search, statuses, sort_by, ascending)
 
+    # המשבצת נתפסת ליד כפתור ההרצה אך מתמלאת רק כאן - אחרי הסינון - כדי לייצא את הסט המסונן בפועל.
     # utf-8-sig מוסיף BOM כך ש-Excel יזהה נכון קידוד עברי בפתיחת קובץ ה-CSV
-    col_download.download_button(
+    export_slot.download_button(
         "📥 הורד דוח (CSV)", data=df.to_csv(index=False).encode("utf-8-sig"),
         file_name="shalomci_report.csv", mime="text/csv"
     )
