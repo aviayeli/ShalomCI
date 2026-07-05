@@ -1,3 +1,5 @@
+
+cat << 'EOF' > Dockerfile
 # Use an official Python slim image
 FROM python:3.10-slim
 
